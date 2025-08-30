@@ -1,0 +1,52 @@
+{
+	"name": "@wfp99/data-gateway",
+	"version": "0.1.0",
+	"description": "A lightweight, extensible data gateway for Node.js supporting multiple data sources, custom providers and middleware.",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"build": "tsc",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"coverage": "vitest run --coverage",
+		"prepublishOnly": "npm run test:run && npm run build"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/wfp99/data-gateway.git"
+	},
+	"bugs": {
+		"url": "https://github.com/wfp99/data-gateway/issues"
+	},
+	"homepage": "https://github.com/wfp99/data-gateway#readme",
+	"keywords": [
+		"database",
+		"sqlite",
+		"mysql",
+		"data-gateway",
+		"TypeScript",
+		"Node.js"
+	],
+	"author": "wfp99 <oldking.gary@gmail.com>",
+	"license": "MIT",
+	"files": [
+		"dist"
+	],
+	"devDependencies": {
+		"@types/node": "^20.14.2",
+		"@vitest/coverage-v8": "^1.6.0",
+		"mysql2": "^3.14.3",
+		"sqlite": "^5.1.1",
+		"sqlite3": "^5.1.7",
+		"typescript": "^5.4.5",
+		"vitest": "^1.6.1"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"peerDependencies": {
+		"mysql2": "^3.0.0",
+		"sqlite": "^5.0.0",
+		"sqlite3": "^5.0.0"
+	}
+}
