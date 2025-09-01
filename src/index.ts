@@ -1,3 +1,8 @@
+/**
+ * @file This file serves as the main entry point for the DataGateway library.
+ * It exports all the public-facing classes, types, and interfaces, and defines the main `DataGateway` class
+ * which acts as the central coordinator for data providers and repositories.
+ */
 import { Query, Condition, Aggregate, Join } from './queryObject';
 import { DataProvider } from './dataProvider';
 import { MySQLProvider, MySQLProviderOptions } from './dataProviders/MySQLProvider';
