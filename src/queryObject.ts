@@ -83,7 +83,7 @@ export interface QueryResult<T = any>
 	/** SELECT query result rows */
 	rows?: T[];
 
-	/** Number of rows affected by INSERT/UPDATE */
+	/** Number of rows affected by INSERT, UPDATE, or DELETE operations. */
 	affectedRows?: number;
 
 	/** Primary key value of newly inserted data (optional, supported by some databases) */
