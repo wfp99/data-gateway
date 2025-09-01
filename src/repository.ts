@@ -22,22 +22,26 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	) { }
 
 	/**
-	 * Converts query fields using the provided entity mapper.
+	 * Maps a query object from entity-centric fields and values to database-centric
+	 * column names using the repository's mapper. This includes fields, conditions,
+	 * ordering, and values for insertion/updates.
+	 * @param query The application-level query object.
+	 * @returns A new query object with names translated for the database.
 	 */
-	private convertQueryFields(query: Query, mapper: EntityFieldMapper<T>): Query
+	private mapQueryToDb(query: Query): Query
 	{
 		const convertField = (field: string | Aggregate): string | Aggregate =>
 		{
 			if (typeof field === 'string')
 			{
-				return mapper.toDbField(field);
+				return this.mapper.toDbField(field);
 			}
 			if (typeof field === 'object' && field !== null)
 			{
 				const newField = { ...field };
 				if (newField.field)
 				{
-					newField.field = mapper.toDbField(newField.field);
+					newField.field = this.mapper.toDbField(newField.field);
 				}
 				return newField;
 			}
@@ -51,10 +55,10 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			const newCond = { ...cond } as Condition;
 			if ('field' in newCond && typeof newCond.field === 'string')
 			{
-				newCond.field = mapper.toDbField(newCond.field);
+				newCond.field = this.mapper.toDbField(newCond.field);
 				if ('subquery' in newCond && typeof newCond.subquery === 'object')
 				{
-					newCond.subquery = this.convertQueryFields(newCond.subquery, this.mapper);
+					newCond.subquery = this.mapQueryToDb(newCond.subquery);
 				}
 			}
 			// Recursively handle compound conditions
@@ -74,7 +78,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			{
 				if ('field' in newCond.like && typeof newCond.like.field === 'string')
 				{
-					newCond.like.field = mapper.toDbField(newCond.like.field);
+					newCond.like.field = this.mapper.toDbField(newCond.like.field);
 				}
 			}
 
@@ -95,7 +99,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		{
 			newQuery.orderBy = newQuery.orderBy.map(order => ({
 				...order,
-				field: mapper.toDbField(order.field)
+				field: this.mapper.toDbField(order.field)
 			}));
 		}
 		if (newQuery.values && typeof newQuery.values === 'object' && !Array.isArray(newQuery.values))
@@ -103,7 +107,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			const newValues: Record<string, any> = {};
 			for (const key in newQuery.values)
 			{
-				newValues[mapper.toDbField(key)] = newQuery.values[key];
+				newValues[this.mapper.toDbField(key)] = newQuery.values[key];
 			}
 			newQuery.values = newValues;
 		}
@@ -119,7 +123,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	{
 		try
 		{
-			const dbQuery = this.convertQueryFields({ ...query, type: 'SELECT', table: this.table }, this.mapper);
+			const dbQuery = this.mapQueryToDb({ ...query, type: 'SELECT', table: this.table });
 			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query<Record<string, any>>(q);
@@ -172,21 +176,20 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	{
 		try
 		{
-			const dbField = this.mapper.toDbField(field);
 			const query: Query = {
 				type: 'SELECT',
 				table: this.table,
-				fields: [{ type: 'COUNT', field: dbField, alias: `count_${field}` }],
+				fields: [{ type: 'COUNT', field: this.mapper.toDbField(field), alias: 'result' }],
 				where: condition
 			};
-			const dbQuery = this.convertQueryFields(query, this.mapper);
+			const dbQuery = this.mapQueryToDb(query);
 			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query<Record<string, any>>(q);
 			});
-			if (rows && rows.length > 0)
-				return rows[0][`count_${field}`] || 0;
-			return 0;
+			// The result will be in a field named 'result' due to the alias.
+			// Coerce to Number as some DB drivers might return it as a string.
+			return (rows && rows.length > 0) ? Number(rows[0].result) || 0 : 0;
 		}
 		catch (err)
 		{
@@ -204,25 +207,23 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	{
 		try
 		{
-			const dbFields = fields.map(f => this.mapper.toDbField(f));
 			const query: Query = {
 				type: 'SELECT',
 				table: this.table,
-				fields: dbFields.map((f, i) => ({ type: 'SUM', field: f, alias: `sum_${fields[i]}` })),
+				fields: fields.map(f => ({ type: 'SUM', field: this.mapper.toDbField(f), alias: f })),
 				where: condition
 			};
-			const dbQuery = this.convertQueryFields(query, this.mapper);
+			const dbQuery = this.mapQueryToDb(query);
 			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query<Record<string, any>>(q);
 			});
 			const result: Record<string, number> = {};
-			if (rows && rows.length > 0)
+			const row = rows?.[0] ?? {};
+			for (const f of fields)
 			{
-				for (const f of fields)
-				{
-					result[f] = rows[0][`sum_${f}`] || 0;
-				}
+				// The result for each sum will be in a field named after the original entity field.
+				result[f] = Number(row[f]) || 0;
 			}
 			return result;
 		}
@@ -247,7 +248,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				table: this.table,
 				values
 			};
-			const dbQuery = this.convertQueryFields(query, this.mapper);
+			const dbQuery = this.mapQueryToDb(query);
 			const result = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query(q);
@@ -277,7 +278,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				values: dbValues,
 				where: condition
 			};
-			const dbQuery = this.convertQueryFields(query, this.mapper);
+			const dbQuery = this.mapQueryToDb(query);
 			const { affectedRows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query(q);
@@ -304,7 +305,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				table: this.table,
 				where: condition
 			};
-			const dbQuery = this.convertQueryFields(query, this.mapper);
+			const dbQuery = this.mapQueryToDb(query);
 			const { affectedRows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query(q);
