@@ -94,7 +94,7 @@ export class RemoteProvider implements DataProvider
 		}
 		catch (err)
 		{
-			return { error: '[RemoteProvider.query] ' + (err as Error).message };
+			return { error: `[RemoteProvider.query] ${err instanceof Error ? err.message : String(err)}` };
 		}
 	}
 }

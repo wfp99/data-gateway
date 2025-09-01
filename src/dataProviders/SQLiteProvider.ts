@@ -293,7 +293,7 @@ export class SQLiteProvider implements DataProvider
 		}
 		catch (err)
 		{
-			return { error: '[SQLiteProvider.query] ' + (err as Error).message };
+			return { error: `[SQLiteProvider.query] ${err instanceof Error ? err.message : String(err)}` };
 		}
 	}
 }
