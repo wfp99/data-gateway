@@ -75,6 +75,10 @@ const config = {
 })();
 ```
 
+## Documentation
+
+For more detailed information, please see the [documentation](./docs/en/index.md).
+
 ## Core Concepts
 
 - **DataProvider**: Abstract interface for data sources. Built-in support for MySQL, SQLite, RemoteProvider, and custom providers.

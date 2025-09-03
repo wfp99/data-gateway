@@ -75,6 +75,10 @@ const config = {
 })();
 ```
 
+## 說明文件
+
+更詳細的資訊請參閱[說明文件](./docs/zh-TW/index.md)。
+
 ## 核心概念
 
 - **DataProvider**: 資料來源的抽象介面。內建支援 MySQL、SQLite、RemoteProvider 和自訂提供者。
