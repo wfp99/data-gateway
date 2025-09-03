@@ -1,7 +1,9 @@
 # Data Gateway
 
+[English](./README.md) | [繁體中文](./README.zh-TW.md)
+
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
-[![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./license)
+[![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
 
 一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源（MySQL、SQLite、遠端 API）、自訂資料提供者和 middleware。非常適合建構現代、資料驅動的應用程式。
 
@@ -19,7 +21,8 @@
 # 安裝核心函式庫
 npm install @wfp99/data-gateway
 
-# 安裝您想使用的資料庫驅動程式
+# 接著，安裝您想使用的資料庫驅動程式。
+# 這些是 peer dependencies，讓您可以只安裝您需要的套件。
 npm install mysql2
 # 或
 npm install sqlite sqlite3
@@ -28,7 +31,7 @@ npm install sqlite sqlite3
 ## 快速入門
 
 ```typescript
-import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions } from '@wfp99/data-gateway';
+import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
 
 // 定義提供者和儲存庫的設定
 const config = {
@@ -47,13 +50,23 @@ const config = {
 		sqlite: {
 			type: 'sqlite',
 			options: { filename: './test.db' } as SQLiteProviderOptions
-		}
+		},
+        // 遠端 API 提供者設定
+        remote: {
+            type: 'remote',
+            options: {
+                endpoint: 'https://api.example.com/data',
+                bearerToken: 'your-secret-token'
+            } as RemoteProviderOptions
+        }
 	},
 	repositories: {
 		// 使用 MySQL 的使用者儲存庫
 		user: { provider: 'mysql', table: 'users' },
 		// 使用 SQLite 的日誌儲存庫
-		log: { provider: 'sqlite', table: 'logs' }
+		log: { provider: 'sqlite', table: 'logs' },
+        // 使用遠端 API 的產品儲存庫
+        product: { provider: 'remote' }
 	}
 };
 
@@ -88,7 +101,26 @@ const config = {
 - **QueryObject**: 統一的查詢物件格式，支援條件、分頁、排序、聚合等。
 
 
-## Query Object 範例
+## 使用範例
+
+`Repository` 為所有 CRUD 操作提供了一個簡單而強大的 API。
+
+### 建立資料
+
+```typescript
+const userRepo = gateway.getRepository('user');
+
+const newUserId = await userRepo.insert({
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    age: 30,
+    status: 'active'
+});
+
+console.log(`已建立新使用者，ID 為: ${newUserId}`);
+```
+
+### 讀取資料 (查詢)
 
 `QueryObject` 提供了一種彈性且統一的方式來描述資料庫操作。以下是一個更複雜的查詢範例：
 
@@ -96,7 +128,7 @@ const config = {
 // 查詢所有狀態為 active 且年齡大於 18 的使用者，
 // 只選擇特定欄位，並依建立時間降冪排序，取得前 10 筆資料。
 const userRepo = gateway.getRepository('user');
-const users = await userRepo?.find({
+const users = await userRepo.find({
     fields: ['id', 'name', 'email'],
     where: {
         and: [
@@ -112,7 +144,32 @@ const users = await userRepo?.find({
 console.log(users);
 ```
 
-注意：在上面的範例中，如果您為儲存庫設定了自訂的 `EntityFieldMapper`，像 `status`、`age` 和 `createdAt` 這樣的欄位名稱會被自動轉換成對應的資料庫欄位名稱（例如 `user_status`、`user_age`、`created_at`）。這讓您的應用程式碼保持簡潔，並與資料庫結構解耦。
+*注意：在上面的範例中，如果您為儲存庫設定了自訂的 `EntityFieldMapper`，像 `status`、`age` 和 `createdAt` 這樣的欄位名稱會被自動轉換成對應的資料庫欄位名稱（例如 `user_status`、`user_age`、`created_at`）。這讓您的應用程式碼保持簡潔，並與資料庫結構解耦。*
+
+### 更新資料
+
+```typescript
+const userRepo = gateway.getRepository('user');
+
+const affectedRows = await userRepo.update(
+    { status: 'inactive' }, // 要更新的欄位值
+    { field: 'id', op: '=', value: newUserId } // where 條件
+);
+
+console.log(`已更新 ${affectedRows} 位使用者。`);
+```
+
+### 刪除資料
+
+```typescript
+const userRepo = gateway.getRepository('user');
+
+const deletedRows = await userRepo.delete(
+    { field: 'id', op: '=', value: newUserId } // where 條件
+);
+
+console.log(`已刪除 ${deletedRows} 位使用者。`);
+```
 
 ## Middleware 範例
 
@@ -160,7 +217,7 @@ class CustomProvider implements DataProvider {
 
 - MySQL (需要 `mysql2`)
 - SQLite (需要 `sqlite3`)
-- 遠端 API (RemoteProvider)
+- 遠端 API (透過 `RemoteProvider`)
 - 自訂資料提供者
 
 ## 授權

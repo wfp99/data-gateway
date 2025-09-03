@@ -1,7 +1,9 @@
 # Data Gateway
 
+[English](./README.md) | [繁體中文](./README.zh-TW.md)
+
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
-[![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./license)
+[![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
 
 A lightweight, extensible data access gateway for Node.js, supporting multiple data sources (MySQL, SQLite, remote API), custom providers, and middleware. Ideal for building modern, data-driven applications.
 
@@ -19,7 +21,8 @@ A lightweight, extensible data access gateway for Node.js, supporting multiple d
 # Install the core library
 npm install @wfp99/data-gateway
 
-# Then, install the driver(s) for the database(s) you want to use
+# Then, install the driver(s) for the database(s) you want to use.
+# These are peer dependencies, allowing you to only install what you need.
 npm install mysql2
 # or
 npm install sqlite sqlite3
@@ -28,7 +31,7 @@ npm install sqlite sqlite3
 ## Quick Start
 
 ```typescript
-import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions } from '@wfp99/data-gateway';
+import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
 
 // Define configuration for providers and repositories
 const config = {
@@ -47,13 +50,23 @@ const config = {
 		sqlite: {
 			type: 'sqlite',
 			options: { filename: './test.db' } as SQLiteProviderOptions
-		}
+		},
+        // Remote API provider configuration
+        remote: {
+            type: 'remote',
+            options: {
+                endpoint: 'https://api.example.com/data',
+                bearerToken: 'your-secret-token'
+            } as RemoteProviderOptions
+        }
 	},
 	repositories: {
 		// User repository using MySQL
 		user: { provider: 'mysql', table: 'users' },
 		// Log repository using SQLite
-		log: { provider: 'sqlite', table: 'logs' }
+		log: { provider: 'sqlite', table: 'logs' },
+        // Product repository using a remote API
+        product: { provider: 'remote' }
 	}
 };
 
@@ -88,15 +101,34 @@ For more detailed information, please see the [documentation](./docs/en/index.md
 - **QueryObject**: Unified query object format supporting conditions, pagination, sorting, aggregation, and more.
 
 
-## Query Object Example
+## Usage Examples
 
-The `QueryObject` provides a flexible and unified way to describe database operations. Here's a more complex example of how to use it to query data:
+The `Repository` provides a simple and powerful API for all CRUD operations.
+
+### Creating Data
+
+```typescript
+const userRepo = gateway.getRepository('user');
+
+const newUserId = await userRepo.insert({
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    age: 30,
+    status: 'active'
+});
+
+console.log(`New user created with ID: ${newUserId}`);
+```
+
+### Reading Data (Queries)
+
+The `QueryObject` provides a flexible and unified way to describe database operations. Here's a more complex example:
 
 ```typescript
 // Find all active users over 18, select specific fields,
 // order by creation date, and get the first 10.
 const userRepo = gateway.getRepository('user');
-const users = await userRepo?.find({
+const users = await userRepo.find({
     fields: ['id', 'name', 'email'],
     where: {
         and: [
@@ -112,7 +144,32 @@ const users = await userRepo?.find({
 console.log(users);
 ```
 
-Note: In the example above, field names like `status`, `age`, and `createdAt` are automatically converted to their corresponding database column names (e.g., `user_status`, `user_age`, `created_at`) by the `EntityFieldMapper` if a custom mapper is configured for the repository. This keeps your application code clean and decoupled from the database schema.
+*Note: In the examples above, field names like `status`, `age`, and `createdAt` are automatically converted to their corresponding database column names (e.g., `user_status`, `user_age`, `created_at`) by the `EntityFieldMapper` if a custom mapper is configured for the repository. This keeps your application code clean and decoupled from the database schema.*
+
+### Updating Data
+
+```typescript
+const userRepo = gateway.getRepository('user');
+
+const affectedRows = await userRepo.update(
+    { status: 'inactive' }, // values to update
+    { field: 'id', op: '=', value: newUserId } // where condition
+);
+
+console.log(`${affectedRows} user(s) updated.`);
+```
+
+### Deleting Data
+
+```typescript
+const userRepo = gateway.getRepository('user');
+
+const deletedRows = await userRepo.delete(
+    { field: 'id', op: '=', value: newUserId } // where condition
+);
+
+console.log(`${deletedRows} user(s) deleted.`);
+```
 
 ## Middleware Example
 
@@ -160,7 +217,7 @@ class CustomProvider implements DataProvider {
 
 - MySQL (requires `mysql2`)
 - SQLite (requires `sqlite3`)
-- Remote API (RemoteProvider)
+- Remote API (via `RemoteProvider`)
 - Custom providers
 
 ## License
