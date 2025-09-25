@@ -5,19 +5,20 @@
  */
 import { Query, Condition, Aggregate, Join } from './queryObject';
 import { DataProvider } from './dataProvider';
-import { MySQLProvider, MySQLProviderOptions } from './dataProviders/MySQLProvider';
-import { SQLiteProvider, SQLiteProviderOptions } from './dataProviders/SQLiteProvider';
 import { RemoteProvider, RemoteProviderOptions } from './dataProviders/remoteProvider';
 import { Middleware } from './middleware';
 import { EntityFieldMapper, DefaultFieldMapper, MappingFieldMapper } from './entityFieldMapper';
 import { Repository } from './repository';
 
+// Type-only imports for providers that require peer dependencies
+// This allows us to export the types without importing the actual implementations
+export type { MySQLProviderOptions } from './dataProviders/MySQLProvider.js';
+export type { SQLiteProviderOptions } from './dataProviders/SQLiteProvider.js';
+
 export
 {
 	Query, Condition, Aggregate, Join,
 	DataProvider,
-	MySQLProvider, MySQLProviderOptions,
-	SQLiteProvider, SQLiteProviderOptions,
 	RemoteProvider, RemoteProviderOptions,
 	Middleware,
 	EntityFieldMapper, DefaultFieldMapper, MappingFieldMapper,
@@ -29,6 +30,10 @@ type ProviderType = 'mysql' | 'sqlite' | 'remote' | 'custom' | string;
 
 // Defines the options for custom data providers.
 type CustomProviderOptions = { provider: DataProvider };
+
+// Import types dynamically - these will be resolved at build time
+type MySQLProviderOptions = import('./dataProviders/MySQLProvider.js').MySQLProviderOptions;
+type SQLiteProviderOptions = import('./dataProviders/SQLiteProvider.js').SQLiteProviderOptions;
 
 // Defines the options for each provider type.
 type ProviderOptions = MySQLProviderOptions | SQLiteProviderOptions | RemoteProviderOptions | CustomProviderOptions;
@@ -117,10 +122,36 @@ export class DataGateway
 				switch (providerConfig.type)
 				{
 					case 'mysql':
-						provider = new MySQLProvider((providerConfig.options as MySQLProviderOptions));
+						try
+						{
+							const { MySQLProvider } = await import('./dataProviders/MySQLProvider.js');
+							provider = new MySQLProvider((providerConfig.options as MySQLProviderOptions));
+						}
+						catch (err)
+						{
+							const error = err instanceof Error ? err : new Error(String(err));
+							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
+							{
+								throw new Error(`MySQL provider requires 'mysql2' package. Please install it: npm install mysql2`);
+							}
+							throw error;
+						}
 						break;
 					case 'sqlite':
-						provider = new SQLiteProvider((providerConfig.options as SQLiteProviderOptions));
+						try
+						{
+							const { SQLiteProvider } = await import('./dataProviders/SQLiteProvider.js');
+							provider = new SQLiteProvider((providerConfig.options as SQLiteProviderOptions));
+						}
+						catch (err)
+						{
+							const error = err instanceof Error ? err : new Error(String(err));
+							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
+							{
+								throw new Error(`SQLite provider requires 'sqlite' and 'sqlite3' packages. Please install them: npm install sqlite sqlite3`);
+							}
+							throw error;
+						}
 						break;
 					case 'remote':
 						provider = new RemoteProvider((providerConfig.options as RemoteProviderOptions));
