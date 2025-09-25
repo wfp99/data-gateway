@@ -21,12 +21,23 @@
 # 安裝核心函式庫
 npm install @wfp99/data-gateway
 
-# 接著，安裝您想使用的資料庫驅動程式。
-# 這些是 peer dependencies，讓您可以只安裝您需要的套件。
+# 接著，只需安裝您實際要使用的資料庫驅動程式。
+# 透過延遲載入技術，您只需要安裝實際使用的套件。
+
+# 若需要 MySQL 支援：
 npm install mysql2
-# 或
+
+# 若需要 SQLite 支援：
 npm install sqlite sqlite3
+
+# 若只使用遠端 API（不需要額外依賴）：
+# 您已經準備好了！🎉
 ```
+
+### 延遲載入的優勢
+
+- **只安裝需要的套件**：函式庫使用延遲載入技術，只在實際使用時才匯入資料庫提供者
+- **無強制依賴**：您可以使用 RemoteProvider 而不需要安裝任何資料庫驅動程式
 
 ## 快速入門
 
@@ -216,7 +227,7 @@ class CustomProvider implements DataProvider {
 ## 支援的資料來源
 
 - MySQL (需要 `mysql2`)
-- SQLite (需要 `sqlite3`)
+- SQLite (需要 `sqlite` 和 `sqlite3`)
 - 遠端 API (透過 `RemoteProvider`)
 - 自訂資料提供者
 

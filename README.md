@@ -21,12 +21,23 @@ A lightweight, extensible data access gateway for Node.js, supporting multiple d
 # Install the core library
 npm install @wfp99/data-gateway
 
-# Then, install the driver(s) for the database(s) you want to use.
-# These are peer dependencies, allowing you to only install what you need.
+# Then, install only the driver(s) for the database(s) you want to use.
+# Thanks to lazy loading, you only need to install what you actually use.
+
+# For MySQL support:
 npm install mysql2
-# or
+
+# For SQLite support:
 npm install sqlite sqlite3
+
+# For Remote API only (no additional dependencies needed):
+# You're all set! 🎉
 ```
+
+### Lazy Loading Benefits
+
+- **Install only what you need**: The library uses lazy loading to import database providers only when actually used
+- **No forced dependencies**: You can use RemoteProvider without installing any database drivers
 
 ## Quick Start
 
@@ -216,7 +227,7 @@ class CustomProvider implements DataProvider {
 ## Supported Data Sources
 
 - MySQL (requires `mysql2`)
-- SQLite (requires `sqlite3`)
+- SQLite (requires `sqlite` and `sqlite3`)
 - Remote API (via `RemoteProvider`)
 - Custom providers
 
