@@ -162,4 +162,56 @@ describe('DataGateway', () =>
 		await gateway.disconnectAll();
 		expect(mockCustomProvider.disconnect).toHaveBeenCalledTimes(1);
 	});
+
+	it('should handle partial entity insert with Repository', async () =>
+	{
+		const mockInsertResult = { insertId: 123, affectedRows: 1, rows: [] };
+		const mockCustomProvider: DataProvider = {
+			connect: vi.fn().mockResolvedValue(undefined),
+			disconnect: vi.fn().mockResolvedValue(undefined),
+			query: vi.fn().mockResolvedValue(mockInsertResult),
+		};
+
+		const config: DataGatewayConfig = {
+			providers: {
+				custom: { type: 'custom', options: { provider: mockCustomProvider } },
+			},
+			repositories: {
+				user: { provider: 'custom', table: 'users' },
+			},
+		};
+
+		const gateway = await DataGateway.build(config);
+		const userRepo = gateway.getRepository('user');
+
+		// Test partial entity insert
+		interface User {
+			id?: number;
+			name: string;
+			email: string;
+			age?: number;
+			status?: string;
+		}
+
+		const partialUser: Partial<User> = {
+			name: 'John Doe',
+			email: 'john@example.com'
+			// age and status are omitted, should use database defaults
+		};
+
+		const insertId = await userRepo?.insert(partialUser);
+		expect(insertId).toBe(123);
+
+		// Verify the query was called with proper parameters
+		expect(mockCustomProvider.query).toHaveBeenCalledWith({
+			type: 'INSERT',
+			table: 'users',
+			values: {
+				name: 'John Doe',
+				email: 'john@example.com'
+			}
+		});
+
+		await gateway.disconnectAll();
+	});
 });
