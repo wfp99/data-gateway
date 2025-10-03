@@ -1,6 +1,6 @@
 {
 	"name": "@wfp99/data-gateway",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"description": "A lightweight, extensible data gateway for Node.js supporting multiple data sources, custom providers and middleware.",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
