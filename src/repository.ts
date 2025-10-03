@@ -238,7 +238,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	 * @param entity Object to be inserted
 	 * @returns ID of the inserted object
 	 */
-	async insert(entity: T): Promise<number | string>
+	async insert(entity: Partial<T>): Promise<number | string>
 	{
 		try
 		{
