@@ -45,7 +45,9 @@ const config = {
 
 ## 常見用法
 
-- 查詢、分頁、排序、聚合、插入、更新、刪除
+- 查詢、分頁、排序、聚合
+- 插入操作（支援完整和部分實體，可利用資料庫預設值）
+- 更新和刪除操作
 - 多資料來源切換
 - 自訂 [Middleware](./api/middleware.md) 與 [欄位對應](./api/entity-field-mapper.md)
 

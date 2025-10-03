@@ -121,6 +121,7 @@ The `Repository` provides a simple and powerful API for all CRUD operations.
 ```typescript
 const userRepo = gateway.getRepository('user');
 
+// Insert with full object
 const newUserId = await userRepo.insert({
     name: 'John Doe',
     email: 'john.doe@example.com',
@@ -128,7 +129,15 @@ const newUserId = await userRepo.insert({
     status: 'active'
 });
 
+// Insert with partial object (allowing database default values)
+const anotherUserId = await userRepo.insert({
+    name: 'Jane Smith',
+    email: 'jane.smith@example.com'
+    // age and status will use database default values if defined
+});
+
 console.log(`New user created with ID: ${newUserId}`);
+console.log(`Another user created with ID: ${anotherUserId}`);
 ```
 
 ### Reading Data (Queries)

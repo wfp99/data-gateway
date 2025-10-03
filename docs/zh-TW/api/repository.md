@@ -66,8 +66,26 @@ constructor(
 ### `insert(entity)`
 新增一筆資料。
 
-- **`entity`**: 要新增的物件實體 `T`。
+- **`entity`**: 要新增的 `Partial<T>` 物件實體。您可以只提供必要的欄位，並讓資料庫為省略的欄位使用預設值。
 - **回傳值**: `Promise<number | string>` - 新增資料的 ID (通常是主鍵)，具體格式依賴 [`DataProvider`](./data-provider.md) 的實作。
+
+**範例:**
+```typescript
+// 使用完整欄位新增
+const fullUser = await userRepo.insert({
+    name: 'John Doe',
+    email: 'john@example.com',
+    age: 30,
+    status: 'active'
+});
+
+// 使用部分欄位新增（省略的欄位將使用資料庫預設值）
+const partialUser = await userRepo.insert({
+    name: 'Jane Smith',
+    email: 'jane@example.com'
+    // age 和 status 將使用資料庫預設值
+});
+```
 
 ### `update(values, condition?)`
 更新符合條件的資料。

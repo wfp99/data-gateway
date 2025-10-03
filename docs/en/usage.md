@@ -45,7 +45,9 @@ const config = {
 
 ## Common Usage
 
-- Query, pagination, sorting, aggregation, insert, update, delete
+- Query, pagination, sorting, aggregation
+- Insert operations (supports both complete and partial entities, enabling database default values)
+- Update and delete operations
 - Switching between multiple data sources
 - Custom [Middleware](./api/middleware.md) and [field mapping](./api/entity-field-mapper.md)
 

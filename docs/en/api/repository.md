@@ -66,8 +66,26 @@ Calculates the sum of the specified fields.
 ### `insert(entity)`
 Inserts a new record.
 
-- **`entity`**: The object instance `T` to be inserted.
+- **`entity`**: A `Partial<T>` object instance to be inserted. You can provide only the required fields and let the database use default values for omitted fields.
 - **Returns**: `Promise<number | string>` - The ID of the newly inserted record (usually the primary key), the specific format depends on the [`DataProvider`](./data-provider.md) implementation.
+
+**Example:**
+```typescript
+// Insert with all fields
+const fullUser = await userRepo.insert({
+    name: 'John Doe',
+    email: 'john@example.com',
+    age: 30,
+    status: 'active'
+});
+
+// Insert with partial fields (database defaults will be used for omitted fields)
+const partialUser = await userRepo.insert({
+    name: 'Jane Smith',
+    email: 'jane@example.com'
+    // age and status will use database default values
+});
+```
 
 ### `update(values, condition?)`
 Updates records that match the criteria.

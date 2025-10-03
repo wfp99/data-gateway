@@ -121,6 +121,7 @@ const config = {
 ```typescript
 const userRepo = gateway.getRepository('user');
 
+// 使用完整物件新增
 const newUserId = await userRepo.insert({
     name: 'John Doe',
     email: 'john.doe@example.com',
@@ -128,7 +129,15 @@ const newUserId = await userRepo.insert({
     status: 'active'
 });
 
+// 使用部分物件新增（允許使用資料庫預設值）
+const anotherUserId = await userRepo.insert({
+    name: 'Jane Smith',
+    email: 'jane.smith@example.com'
+    // age 和 status 將使用資料庫預設值（如果有定義的話）
+});
+
 console.log(`已建立新使用者，ID 為: ${newUserId}`);
+console.log(`已建立另一位使用者，ID 為: ${anotherUserId}`);
 ```
 
 ### 讀取資料 (查詢)
