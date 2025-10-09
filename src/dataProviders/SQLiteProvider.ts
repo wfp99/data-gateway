@@ -1,7 +1,22 @@
-import { DataProvider } from '../dataProvider';
+import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult } from '../queryObject';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
+
+/**
+ * Connection pool configuration for SQLite.
+ * Note: SQLite doesn't support true connection pooling like MySQL,
+ * but we can manage multiple database handles for read operations.
+ */
+export interface SQLiteConnectionPoolConfig
+{
+	/** Whether to use connection pooling for read operations (default: false) */
+	usePool?: boolean;
+	/** Maximum number of read-only connections (default: 3) */
+	maxReadConnections?: number;
+	/** Whether to enable WAL mode for better concurrency (default: true when pooling) */
+	enableWAL?: boolean;
+}
 
 /**
  * Options for connecting to and operating on a SQLite database.
@@ -10,16 +25,28 @@ export interface SQLiteProviderOptions
 {
 	/** The file path to the SQLite database. */
 	filename: string;
+	/** Connection pool configuration */
+	pool?: SQLiteConnectionPoolConfig;
 }
 
 /**
  * A SQLite data provider that implements the `DataProvider` interface,
- * supporting SQLite operations through a query object model.
+ * supporting SQLite operations through a query object model with basic connection management.
  */
 export class SQLiteProvider implements DataProvider
 {
+	/** Primary database connection (used for writes and when pooling is disabled) */
 	private db?: Database;
+	/** Pool of read-only connections (when pooling is enabled) */
+	private readPool: Database[] = [];
+	/** Configuration options */
 	private readonly options: SQLiteProviderOptions;
+	/** Whether connection pooling is enabled */
+	private readonly usePool: boolean;
+	/** Maximum number of read connections */
+	private readonly maxReadConnections: number;
+	/** Current index for round-robin read connection selection */
+	private readConnectionIndex = 0;
 
 	/**
 	 * Creates an instance of SQLiteProvider.
@@ -28,29 +55,285 @@ export class SQLiteProvider implements DataProvider
 	constructor(options: SQLiteProviderOptions)
 	{
 		this.options = options;
+		this.usePool = options.pool?.usePool === true;
+		this.maxReadConnections = options.pool?.maxReadConnections || 3;
 	}
 
 	/**
-	 * Initializes the database connection.
+	 * Validate SQL identifiers (table names, field names, etc.)
+	 * Only allows letters, numbers, underscores, and must start with a letter
+	 */
+	private validateIdentifier(identifier: string): string
+	{
+		if (!identifier || typeof identifier !== 'string')
+		{
+			throw new Error('Invalid identifier: empty or non-string');
+		}
+		// Allow letters at the beginning, followed by letters, numbers, underscores
+		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+		if (!pattern.test(identifier) || identifier.length > 64)
+		{
+			throw new Error(`Invalid identifier: ${identifier}`);
+		}
+		return identifier;
+	}
+
+	/**
+	 * Validate alias
+	 */
+	private validateAlias(alias: string): string
+	{
+		return this.validateIdentifier(alias);
+	}
+
+	/**
+	 * Validate sort direction
+	 */
+	private validateDirection(direction: string): string
+	{
+		if (direction !== 'ASC' && direction !== 'DESC')
+		{
+			throw new Error(`Invalid direction: ${direction}`);
+		}
+		return direction;
+	}
+
+	/**
+	 * Validate JOIN type
+	 */
+	private validateJoinType(joinType: string): string
+	{
+		const allowedJoinTypes = ['INNER', 'LEFT', 'RIGHT', 'FULL OUTER'];
+		if (!allowedJoinTypes.includes(joinType.toUpperCase()))
+		{
+			throw new Error(`Invalid JOIN type: ${joinType}`);
+		}
+		return joinType.toUpperCase();
+	}
+
+	/**
+	 * Validate SQL operators
+	 */
+	private validateOperator(operator: string): boolean
+	{
+		const allowedOperators = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL'];
+		return allowedOperators.includes(operator.toUpperCase());
+	}
+
+	/**
+	 * Validate the security of query objects
+	 */
+	private validateQuery(query: Query): void
+	{
+		// Validate table name
+		if (query.table)
+		{
+			this.validateIdentifier(query.table);
+		}
+
+		// Validate fields
+		if (query.type === 'SELECT' && query.fields)
+		{
+			for (const field of query.fields)
+			{
+				if (typeof field === 'string')
+				{
+					if (field !== '*')
+					{
+						this.validateIdentifier(field);
+					}
+				} else if (typeof field === 'object' && field.type)
+				{
+					this.validateIdentifier(field.type);
+					if (field.field)
+					{
+						this.validateIdentifier(field.field);
+					}
+					if (field.alias)
+					{
+						this.validateAlias(field.alias);
+					}
+				}
+			}
+		}
+
+		// Validate WHERE conditions
+		if (query.where)
+		{
+			this.validateConditionStructure(query.where);
+		}
+
+		// Validate ORDER BY
+		if (query.orderBy)
+		{
+			for (const order of query.orderBy)
+			{
+				this.validateIdentifier(order.field);
+				if (order.direction)
+				{
+					this.validateDirection(order.direction);
+				}
+			}
+		}
+
+		// Validate JOIN
+		if (query.joins)
+		{
+			for (const join of query.joins)
+			{
+				this.validateIdentifier(join.table);
+				this.validateJoinType(join.type);
+				this.validateConditionStructure(join.on);
+			}
+		}
+
+		// Validate LIMIT and OFFSET
+		if (query.limit !== undefined && (!Number.isInteger(query.limit) || query.limit < 0))
+		{
+			throw new Error('Invalid LIMIT value');
+		}
+		if (query.offset !== undefined && (!Number.isInteger(query.offset) || query.offset < 0))
+		{
+			throw new Error('Invalid OFFSET value');
+		}
+	}
+
+	/**
+	 * Recursively validate condition structure
+	 */
+	private validateConditionStructure(condition: any): void
+	{
+		if (!condition) return;
+
+		if (condition.and)
+		{
+			condition.and.forEach((c: any) => this.validateConditionStructure(c));
+		} else if (condition.or)
+		{
+			condition.or.forEach((c: any) => this.validateConditionStructure(c));
+		} else if (condition.not)
+		{
+			this.validateConditionStructure(condition.not);
+		} else if (condition.field)
+		{
+			this.validateIdentifier(condition.field);
+			if (condition.op)
+			{
+				this.validateOperator(condition.op);
+			}
+			if (condition.subquery)
+			{
+				this.validateQuery(condition.subquery);
+			}
+		} else if (condition.like)
+		{
+			this.validateIdentifier(condition.like.field);
+		}
+	}
+
+	/**
+	 * Initializes the database connection(s).
 	 */
 	async connect(): Promise<void>
 	{
+		// Create the primary connection
 		this.db = await open({
 			filename: this.options.filename,
 			driver: sqlite3.Database,
 		});
+
+		// Enable WAL mode if pooling is enabled or explicitly requested
+		if (this.usePool || this.options.pool?.enableWAL)
+		{
+			await this.db.exec('PRAGMA journal_mode = WAL;');
+		}
+
+		// Create read-only connections if pooling is enabled
+		if (this.usePool)
+		{
+			for (let i = 0; i < this.maxReadConnections; i++)
+			{
+				const readDb = await open({
+					filename: this.options.filename,
+					driver: sqlite3.Database,
+					mode: sqlite3.OPEN_READONLY,
+				});
+				this.readPool.push(readDb);
+			}
+		}
 	}
 
 	/**
-	 * Closes the database connection.
+	 * Closes all database connections.
 	 */
 	async disconnect(): Promise<void>
 	{
+		// Close read pool connections
+		for (const readDb of this.readPool)
+		{
+			await readDb.close();
+		}
+		this.readPool = [];
+
+		// Close primary connection
 		if (this.db)
 		{
 			await this.db.close();
 			this.db = undefined;
 		}
+	}
+
+	/**
+	 * Gets the connection pool status.
+	 * @returns Connection pool status or undefined if not using pooling.
+	 */
+	getPoolStatus(): ConnectionPoolStatus | undefined
+	{
+		if (!this.usePool) return undefined;
+
+		return {
+			totalConnections: this.readPool.length + (this.db ? 1 : 0),
+			idleConnections: this.readPool.length, // Read connections are always considered idle
+			activeConnections: this.db ? 1 : 0, // Only the write connection can be active
+			maxConnections: this.maxReadConnections + 1,
+			minConnections: 1, // Always maintain at least the primary connection
+		};
+	}
+
+	/**
+	 * Checks if the provider supports connection pooling.
+	 * @returns Always true for SQLite provider (though limited compared to MySQL).
+	 */
+	supportsConnectionPooling(): boolean
+	{
+		return true;
+	}
+
+	/**
+	 * Gets a connection for reading operations.
+	 * Uses round-robin to distribute load across read connections.
+	 */
+	private getReadConnection(): Database
+	{
+		if (!this.usePool || this.readPool.length === 0)
+		{
+			if (!this.db) throw new Error('Not connected');
+			return this.db;
+		}
+
+		const connection = this.readPool[this.readConnectionIndex];
+		this.readConnectionIndex = (this.readConnectionIndex + 1) % this.readPool.length;
+		return connection;
+	}
+
+	/**
+	 * Gets a connection for write operations.
+	 * Always uses the primary connection for writes.
+	 */
+	private getWriteConnection(): Database
+	{
+		if (!this.db) throw new Error('Not connected');
+		return this.db;
 	}
 
 	/**
@@ -62,34 +345,65 @@ export class SQLiteProvider implements DataProvider
 	{
 		let sql = 'SELECT ';
 		const params: any[] = [];
+
+		// Validate and get safe table name
+		const safeTableName = this.validateIdentifier(query.table);
+
 		if (query.fields && query.fields.length > 0)
 		{
-			sql += query.fields.map(f => typeof f === 'string' ? `"${f}"` : `${f.type}(${`"${f.field}"`})${f.alias ? ' AS ' + f.alias : ''}`).join(', ');
+			sql += query.fields.map(f =>
+			{
+				if (typeof f === 'string')
+				{
+					if (f === '*') return '*';
+					const safeFieldName = this.validateIdentifier(f);
+					return `"${safeFieldName}"`;
+				} else
+				{
+					const safeType = this.validateIdentifier(f.type);
+					const safeFieldName = this.validateIdentifier(f.field);
+					const safeAlias = f.alias ? this.validateAlias(f.alias) : '';
+					return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+				}
+			}).join(', ');
 		}
 		else
 		{
 			sql += '*';
 		}
-		sql += ` FROM "${query.table}"`;
+		sql += ` FROM "${safeTableName}"`;
+
 		if (query.joins && query.joins.length > 0)
 		{
 			for (const join of query.joins)
 			{
-				sql += ` ${join.type} JOIN "${join.table}" ON ` + this.conditionToSQL(join.on, params);
+				const safeJoinType = this.validateJoinType(join.type);
+				const safeJoinTable = this.validateIdentifier(join.table);
+				sql += ` ${safeJoinType} JOIN "${safeJoinTable}" ON ` + this.conditionToSQL(join.on, params);
 			}
 		}
+
 		if (query.where)
 		{
 			sql += ' WHERE ' + this.conditionToSQL(query.where, params);
 		}
+
 		if (query.groupBy && query.groupBy.length > 0)
 		{
-			sql += ' GROUP BY ' + query.groupBy.map(f => `"${f}"`).join(', ');
+			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(f));
+			sql += ' GROUP BY ' + safeGroupBy.map(f => `"${f}"`).join(', ');
 		}
+
 		if (query.orderBy && query.orderBy.length > 0)
 		{
-			sql += ' ORDER BY ' + query.orderBy.map(o => `"${o.field}" ${o.direction}`).join(', ');
+			sql += ' ORDER BY ' + query.orderBy.map(o =>
+			{
+				const safeField = this.validateIdentifier(o.field);
+				const safeDirection = this.validateDirection(o.direction);
+				return `"${safeField}" ${safeDirection}`;
+			}).join(', ');
 		}
+
 		if (query.limit !== undefined)
 		{
 			sql += ' LIMIT ?';
@@ -111,8 +425,12 @@ export class SQLiteProvider implements DataProvider
 	private buildInsertSQL(query: Query): { sql: string; params: any[] }
 	{
 		if (!query.values) throw new Error('INSERT must have values');
+
+		const safeTableName = this.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
-		const sql = `INSERT INTO "${query.table}" (${keys.map(k => `"${k}"`).join(', ')}) VALUES (${keys.map(_ => '?').join(', ')})`;
+		const safeKeys = keys.map(k => this.validateIdentifier(k));
+
+		const sql = `INSERT INTO "${safeTableName}" (${safeKeys.map(k => `"${k}"`).join(', ')}) VALUES (${keys.map(_ => '?').join(', ')})`;
 		const params = keys.map(k => query.values![k]);
 		return { sql, params };
 	}
@@ -125,9 +443,14 @@ export class SQLiteProvider implements DataProvider
 	private buildUpdateSQL(query: Query): { sql: string; params: any[] }
 	{
 		if (!query.values) throw new Error('UPDATE must have values');
+
+		const safeTableName = this.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
-		let sql = `UPDATE "${query.table}" SET ` + keys.map(k => `"${k}" = ?`).join(', ');
+		const safeKeys = keys.map(k => this.validateIdentifier(k));
+
+		let sql = `UPDATE "${safeTableName}" SET ` + safeKeys.map(k => `"${k}" = ?`).join(', ');
 		const params = keys.map(k => query.values![k]);
+
 		if (query.where)
 		{
 			sql += ' WHERE ' + this.conditionToSQL(query.where, params);
@@ -142,8 +465,10 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private buildDeleteSQL(query: Query): { sql: string; params: any[] }
 	{
-		let sql = `DELETE FROM "${query.table}"`;
+		const safeTableName = this.validateIdentifier(query.table);
+		let sql = `DELETE FROM "${safeTableName}"`;
 		const params: any[] = [];
+
 		if (query.where)
 		{
 			sql += ' WHERE ' + this.conditionToSQL(query.where, params);
@@ -166,9 +491,10 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
+			const safeFieldName = this.validateIdentifier(cond.field);
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
-			return `"${cond.field}" ${cond.op} (${sql})`;
+			return `"${safeFieldName}" ${cond.op} (${sql})`;
 		}
 		else if ('field' in cond && 'op' in cond && 'value' in cond)
 		{
@@ -177,8 +503,9 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
+			const safeFieldName = this.validateIdentifier(cond.field);
 			params.push(cond.value);
-			return `"${cond.field}" ${cond.op} ?`;
+			return `"${safeFieldName}" ${cond.op} ?`;
 		}
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
 		{
@@ -187,8 +514,9 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
+			const safeFieldName = this.validateIdentifier(cond.field);
 			params.push(...cond.values);
-			return `"${cond.field}" ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			return `"${safeFieldName}" ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 		}
 		else if ('and' in cond)
 		{
@@ -204,8 +532,9 @@ export class SQLiteProvider implements DataProvider
 		}
 		else if ('like' in cond)
 		{
+			const safeFieldName = this.validateIdentifier(cond.like.field);
 			params.push(cond.like.pattern);
-			return `"${cond.like.field}" LIKE ?`;
+			return `"${safeFieldName}" LIKE ?`;
 		}
 		throw new Error('Unknown condition type');
 	}
@@ -217,9 +546,9 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private async find<T = any>(query: Query): Promise<T[]>
 	{
-		if (!this.db) throw new Error('Not connected');
+		const db = this.getReadConnection();
 		const { sql, params } = this.buildSelectSQL(query);
-		return await this.db.all<T[]>(sql, params);
+		return await db.all<T[]>(sql, params);
 	}
 
 	/**
@@ -229,9 +558,9 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private async insert(query: Query): Promise<number>
 	{
-		if (!this.db) throw new Error('Not connected');
+		const db = this.getWriteConnection();
 		const { sql, params } = this.buildInsertSQL(query);
-		const result = await this.db.run(sql, params);
+		const result = await db.run(sql, params);
 		return result.lastID ?? 0;
 	}
 
@@ -242,9 +571,9 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private async update(query: Query): Promise<number>
 	{
-		if (!this.db) throw new Error('Not connected');
+		const db = this.getWriteConnection();
 		const { sql, params } = this.buildUpdateSQL(query);
-		const result = await this.db.run(sql, params);
+		const result = await db.run(sql, params);
 		return result.changes ?? 0;
 	}
 
@@ -255,9 +584,9 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private async delete(query: Query): Promise<number>
 	{
-		if (!this.db) throw new Error('Not connected');
+		const db = this.getWriteConnection();
 		const { sql, params } = this.buildDeleteSQL(query);
-		const result = await this.db.run(sql, params);
+		const result = await db.run(sql, params);
 		return result.changes ?? 0;
 	}
 
@@ -270,6 +599,9 @@ export class SQLiteProvider implements DataProvider
 	{
 		try
 		{
+			// Validate security before executing query
+			this.validateQuery(query);
+
 			switch (query.type)
 			{
 				case 'SELECT':
@@ -280,15 +612,13 @@ export class SQLiteProvider implements DataProvider
 					return { affectedRows: await this.update(query) };
 				case 'DELETE':
 					return { affectedRows: await this.delete(query) };
-				case 'RAW':
-					if (!this.db)
-						return { error: '[SQLiteProvider.query] Not connected' };
-					if (!query.sql)
-						return { error: '[SQLiteProvider.query] RAW query requires sql property' };
-					const result = await this.db.run(query.sql, []);
-					return { affectedRows: result.changes ?? 0 };
 				default:
-					return { error: '[SQLiteProvider.query] Unknown query type: ' + query.type };
+					// Handle legacy RAW queries and unknown types
+					if ((query as any).type === 'RAW')
+					{
+						return { error: '[SQLiteProvider.query] RAW queries are not supported for security reasons' };
+					}
+					return { error: '[SQLiteProvider.query] Unknown query type: ' + (query as any).type };
 			}
 		}
 		catch (err)
