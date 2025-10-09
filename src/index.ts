@@ -4,7 +4,7 @@
  * which acts as the central coordinator for data providers and repositories.
  */
 import { Query, Condition, Aggregate, Join } from './queryObject';
-import { DataProvider } from './dataProvider';
+import { DataProvider, ConnectionPoolStatus } from './dataProvider';
 import { RemoteProvider, RemoteProviderOptions } from './dataProviders/remoteProvider';
 import { Middleware } from './middleware';
 import { EntityFieldMapper, DefaultFieldMapper, MappingFieldMapper } from './entityFieldMapper';
@@ -12,13 +12,14 @@ import { Repository } from './repository';
 
 // Type-only imports for providers that require peer dependencies
 // This allows us to export the types without importing the actual implementations
-export type { MySQLProviderOptions } from './dataProviders/MySQLProvider.js';
-export type { SQLiteProviderOptions } from './dataProviders/SQLiteProvider.js';
+export type { MySQLProviderOptions, ConnectionPoolConfig } from './dataProviders/MySQLProvider.js';
+export type { SQLiteProviderOptions, SQLiteConnectionPoolConfig } from './dataProviders/SQLiteProvider.js';
+export type { PostgreSQLProviderOptions, PostgreSQLConnectionPoolConfig } from './dataProviders/PostgreSQLProvider.js';
 
 export
 {
 	Query, Condition, Aggregate, Join,
-	DataProvider,
+	DataProvider, ConnectionPoolStatus,
 	RemoteProvider, RemoteProviderOptions,
 	Middleware,
 	EntityFieldMapper, DefaultFieldMapper, MappingFieldMapper,
@@ -26,7 +27,7 @@ export
 }
 
 // Defines the types for data provider configurations.
-type ProviderType = 'mysql' | 'sqlite' | 'remote' | 'custom' | string;
+type ProviderType = 'mysql' | 'sqlite' | 'postgresql' | 'remote' | 'custom' | string;
 
 // Defines the options for custom data providers.
 type CustomProviderOptions = { provider: DataProvider };
@@ -34,9 +35,10 @@ type CustomProviderOptions = { provider: DataProvider };
 // Import types dynamically - these will be resolved at build time
 type MySQLProviderOptions = import('./dataProviders/MySQLProvider.js').MySQLProviderOptions;
 type SQLiteProviderOptions = import('./dataProviders/SQLiteProvider.js').SQLiteProviderOptions;
+type PostgreSQLProviderOptions = import('./dataProviders/PostgreSQLProvider.js').PostgreSQLProviderOptions;
 
 // Defines the options for each provider type.
-type ProviderOptions = MySQLProviderOptions | SQLiteProviderOptions | RemoteProviderOptions | CustomProviderOptions;
+type ProviderOptions = MySQLProviderOptions | SQLiteProviderOptions | PostgreSQLProviderOptions | RemoteProviderOptions | CustomProviderOptions;
 
 /**
  * Configuration options for the DataGateway.
@@ -49,11 +51,12 @@ export interface DataGatewayConfig
 	providers:
 	{
 		[name: string]:
-			| { type: 'mysql'; options: MySQLProviderOptions }
-			| { type: 'sqlite'; options: SQLiteProviderOptions }
-			| { type: 'remote'; options: RemoteProviderOptions }
-			| { type: 'custom'; options: CustomProviderOptions }
-			| { type: ProviderType; options: ProviderOptions };
+		| { type: 'mysql'; options: MySQLProviderOptions }
+		| { type: 'sqlite'; options: SQLiteProviderOptions }
+		| { type: 'postgresql'; options: PostgreSQLProviderOptions }
+		| { type: 'remote'; options: RemoteProviderOptions }
+		| { type: 'custom'; options: CustomProviderOptions }
+		| { type: ProviderType; options: ProviderOptions };
 	};
 
 	/**
@@ -95,6 +98,35 @@ export class DataGateway
 	getProvider(name: string): DataProvider | undefined
 	{
 		return this.providers.get(name);
+	}
+
+	/**
+	 * Gets connection pool status for a specific provider.
+	 * @param providerName The name of the provider.
+	 * @returns Connection pool status or undefined if provider doesn't exist or doesn't support pooling.
+	 */
+	getProviderPoolStatus(providerName: string): ConnectionPoolStatus | undefined
+	{
+		const provider = this.providers.get(providerName);
+		return provider?.getPoolStatus?.();
+	}
+
+	/**
+	 * Gets connection pool status for all providers that support pooling.
+	 * @returns A map of provider names to their pool status.
+	 */
+	getAllPoolStatuses(): Map<string, ConnectionPoolStatus>
+	{
+		const statuses = new Map<string, ConnectionPoolStatus>();
+		for (const [name, provider] of this.providers)
+		{
+			const status = provider.getPoolStatus?.();
+			if (status)
+			{
+				statuses.set(name, status);
+			}
+		}
+		return statuses;
 	}
 
 	/**
@@ -149,6 +181,22 @@ export class DataGateway
 							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
 							{
 								throw new Error(`SQLite provider requires 'sqlite' and 'sqlite3' packages. Please install them: npm install sqlite sqlite3`);
+							}
+							throw error;
+						}
+						break;
+					case 'postgresql':
+						try
+						{
+							const { PostgreSQLProvider } = await import('./dataProviders/PostgreSQLProvider.js');
+							provider = new PostgreSQLProvider((providerConfig.options as PostgreSQLProviderOptions));
+						}
+						catch (err)
+						{
+							const error = err instanceof Error ? err : new Error(String(err));
+							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
+							{
+								throw new Error(`PostgreSQL provider requires 'pg' package. Please install it: npm install pg @types/pg`);
 							}
 							throw error;
 						}
