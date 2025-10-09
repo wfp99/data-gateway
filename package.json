@@ -9,6 +9,7 @@
 		"test": "vitest",
 		"test:run": "vitest run",
 		"coverage": "vitest run --coverage",
+		"pre-release": "node scripts/pre-release-test.js",
 		"prepublishOnly": "npm run test:run && npm run build"
 	},
 	"repository": {
@@ -23,6 +24,8 @@
 		"database",
 		"sqlite",
 		"mysql",
+		"postgresql",
+		"postgres",
 		"data-gateway",
 		"TypeScript",
 		"Node.js"
@@ -34,8 +37,10 @@
 	],
 	"devDependencies": {
 		"@types/node": "^20.14.2",
+		"@types/pg": "^8.15.5",
 		"@vitest/coverage-v8": "^1.6.0",
 		"mysql2": "^3.14.3",
+		"pg": "^8.16.3",
 		"sqlite": "^5.1.1",
 		"sqlite3": "^5.1.7",
 		"typescript": "^5.4.5",
@@ -46,6 +51,7 @@
 	},
 	"peerDependencies": {
 		"mysql2": "^3.0.0",
+		"pg": "^8.0.0",
 		"sqlite": "^5.0.0",
 		"sqlite3": "^5.0.0"
 	}
