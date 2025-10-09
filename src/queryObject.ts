@@ -51,11 +51,9 @@ export interface Join
 export interface Query
 {
 	/** Query type: SELECT/INSERT/UPDATE/DELETE */
-	type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'RAW';
+	type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';
 	/** Target table name */
 	table: string;
-	/** SQL statement when type is RAW */
-	sql?: string;
 	/** Fields to query or operate (can include aggregates) */
 	fields?: (string | Aggregate)[];
 	/** Data to insert or update (for INSERT/UPDATE) */
