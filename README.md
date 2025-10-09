@@ -5,11 +5,12 @@
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
 [![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
 
-A lightweight, extensible data access gateway for Node.js, supporting multiple data sources (MySQL, SQLite, remote API), custom providers, and middleware. Ideal for building modern, data-driven applications.
+A lightweight, extensible data access gateway for Node.js, supporting multiple data sources (MySQL, PostgreSQL, SQLite, remote API), custom providers, and middleware. Ideal for building modern, data-driven applications.
 
 ## Features
 
-- Supports multiple data sources: MySQL, SQLite, Remote API
+- Supports multiple data sources: MySQL, PostgreSQL, SQLite, Remote API
+- **Connection pooling support** for improved performance and resource management
 - Customizable providers and middleware
 - Type-safe, written in TypeScript
 - Unified query object model for CRUD and advanced queries
@@ -27,8 +28,13 @@ npm install @wfp99/data-gateway
 # For MySQL support:
 npm install mysql2
 
+# For PostgreSQL support:
+npm install pg @types/pg
+
 # For SQLite support:
-npm install sqlite sqlite3
+npm install @sqlite/sqlite3
+# or alternatively:
+# npm install sqlite3
 
 # For Remote API only (no additional dependencies needed):
 # You're all set! 🎉
@@ -42,25 +48,60 @@ npm install sqlite sqlite3
 ## Quick Start
 
 ```typescript
-import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
+import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, PostgreSQLProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
 
 // Define configuration for providers and repositories
 const config = {
 	providers: {
-		// MySQL provider configuration
+		// MySQL provider configuration with connection pooling
 		mysql: {
 			type: 'mysql',
 			options: {
 				host: 'localhost',
 				user: 'root',
 				password: '',
-				database: 'test'
+				database: 'test',
+				// Connection pool configuration (optional)
+				pool: {
+					usePool: true,          // Enable connection pooling (default: true)
+					connectionLimit: 10,    // Maximum connections in pool (default: 10)
+					acquireTimeout: 60000,  // Connection acquisition timeout (default: 60000ms)
+					timeout: 600000,        // Idle connection timeout (default: 600000ms)
+				}
 			} as MySQLProviderOptions
 		},
-		// SQLite provider configuration
+		// PostgreSQL provider configuration with connection pooling
+		postgresql: {
+			type: 'postgresql',
+			options: {
+				host: 'localhost',
+				user: 'postgres',
+				password: '',
+				database: 'test',
+				port: 5432,
+				// Connection pool configuration (optional)
+				pool: {
+					usePool: true,              // Enable connection pooling (default: true)
+					max: 10,                   // Maximum connections in pool (default: 10)
+					min: 0,                    // Minimum connections to maintain (default: 0)
+					idleTimeoutMillis: 10000,  // Idle connection timeout (default: 10000ms)
+					connectionTimeoutMillis: 30000, // Connection acquisition timeout (default: 30000ms)
+				}
+			} as PostgreSQLProviderOptions
+		},
+		// SQLite provider configuration with read connection pooling
 		sqlite: {
 			type: 'sqlite',
-			options: { filename: './test.db' } as SQLiteProviderOptions
+			options: {
+				filename: './test.db',
+				// Connection pool configuration for read operations (optional)
+				pool: {
+					usePool: true,              // Enable read connection pooling (default: false)
+					readPoolSize: 3,           // Maximum read-only connections (default: 3)
+					acquireTimeout: 30000,     // Connection acquisition timeout (default: 30000ms)
+					idleTimeout: 300000,       // Idle connection timeout (default: 300000ms)
+				}
+			} as SQLiteProviderOptions
 		},
         // Remote API provider configuration
         remote: {
@@ -74,6 +115,8 @@ const config = {
 	repositories: {
 		// User repository using MySQL
 		user: { provider: 'mysql', table: 'users' },
+		// Order repository using PostgreSQL
+		order: { provider: 'postgresql', table: 'orders' },
 		// Log repository using SQLite
 		log: { provider: 'sqlite', table: 'logs' },
         // Product repository using a remote API
@@ -94,6 +137,12 @@ const config = {
 	// Do something with the users (e.g., print them)
 	console.log(users);
 
+	// Monitor connection pool status
+	const poolStatus = gateway.getProviderPoolStatus('mysql');
+	if (poolStatus) {
+		console.log(`MySQL Pool: ${poolStatus.activeConnections}/${poolStatus.maxConnections} connections active`);
+	}
+
 	// Disconnect all providers when done
 	await gateway.disconnectAll();
 })();
@@ -101,7 +150,7 @@ const config = {
 
 ## Documentation
 
-For more detailed information, please see the [documentation](./docs/en/index.md).
+For more detailed information, please see the [documentation](./docs/README.en.md).
 
 ## Core Concepts
 
@@ -236,7 +285,8 @@ class CustomProvider implements DataProvider {
 ## Supported Data Sources
 
 - MySQL (requires `mysql2`)
-- SQLite (requires `sqlite` and `sqlite3`)
+- PostgreSQL (requires `pg` and `@types/pg`)
+- SQLite (requires `@sqlite/sqlite3` or `sqlite3`)
 - Remote API (via `RemoteProvider`)
 - Custom providers
 

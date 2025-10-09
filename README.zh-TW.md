@@ -7,13 +7,14 @@
 
 一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源（MySQL、SQLite、遠端 API）、自訂資料提供者和 middleware。非常適合建構現代、資料驅動的應用程式。
 
-## 功能特性
+## 功能特色
 
-- 支援多種資料來源：MySQL、SQLite、遠端 API
-- 可自訂的資料提供者和 middleware
-- 型別安全，使用 TypeScript 編寫
+- 支援多種資料來源：MySQL、PostgreSQL、SQLite、遠端 API
+- **連線池支援**，提升效能和資源管理
+- 可自訂的提供者和中介軟體
+- 型別安全，使用 TypeScript 撰寫
 - 統一的查詢物件模型，支援 CRUD 和進階查詢
-- 易於擴展和整合
+- 易於擴充和整合
 
 ## 安裝
 
@@ -27,8 +28,13 @@ npm install @wfp99/data-gateway
 # 若需要 MySQL 支援：
 npm install mysql2
 
+# 若需要 PostgreSQL 支援：
+npm install pg @types/pg
+
 # 若需要 SQLite 支援：
-npm install sqlite sqlite3
+npm install @sqlite/sqlite3
+# 或者可以使用：
+# npm install sqlite3
 
 # 若只使用遠端 API（不需要額外依賴）：
 # 您已經準備好了！🎉
@@ -42,25 +48,60 @@ npm install sqlite sqlite3
 ## 快速入門
 
 ```typescript
-import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
+import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, PostgreSQLProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
 
 // 定義提供者和儲存庫的設定
 const config = {
 	providers: {
-		// MySQL 提供者設定
+		// MySQL 提供者設定，包含連線池設定
 		mysql: {
 			type: 'mysql',
 			options: {
 				host: 'localhost',
 				user: 'root',
 				password: '',
-				database: 'test'
+				database: 'test',
+				// 連線池設定（可選）
+				pool: {
+					usePool: true,          // 啟用連線池（預設：true）
+					connectionLimit: 10,    // 連線池最大連線數（預設：10）
+					acquireTimeout: 60000,  // 連線獲取超時時間（預設：60000ms）
+					timeout: 600000,        // 閒置連線超時時間（預設：600000ms）
+				}
 			} as MySQLProviderOptions
 		},
-		// SQLite 提供者設定
+		// PostgreSQL 提供者設定，包含連線池設定
+		postgresql: {
+			type: 'postgresql',
+			options: {
+				host: 'localhost',
+				user: 'postgres',
+				password: '',
+				database: 'test',
+				port: 5432,
+				// 連線池設定（可選）
+				pool: {
+					usePool: true,              // 啟用連線池（預設：true）
+					max: 10,                   // 連線池最大連線數（預設：10）
+					min: 0,                    // 維持的最小連線數（預設：0）
+					idleTimeoutMillis: 10000,  // 閒置連線超時時間（預設：10000ms）
+					connectionTimeoutMillis: 30000, // 連線獲取超時時間（預設：30000ms）
+				}
+			} as PostgreSQLProviderOptions
+		},
+		// SQLite 提供者設定，包含讀取連線池設定
 		sqlite: {
 			type: 'sqlite',
-			options: { filename: './test.db' } as SQLiteProviderOptions
+			options: {
+				filename: './test.db',
+				// 讀取操作連線池設定（可選）
+				pool: {
+					usePool: true,              // 啟用讀取連線池（預設：false）
+					readPoolSize: 3,           // 最大唯讀連線數（預設：3）
+					acquireTimeout: 30000,     // 連線獲取超時時間（預設：30000ms）
+					idleTimeout: 300000,       // 閒置連線超時時間（預設：300000ms）
+				}
+			} as SQLiteProviderOptions
 		},
         // 遠端 API 提供者設定
         remote: {
@@ -74,6 +115,8 @@ const config = {
 	repositories: {
 		// 使用 MySQL 的使用者儲存庫
 		user: { provider: 'mysql', table: 'users' },
+		// 使用 PostgreSQL 的訂單儲存庫
+		order: { provider: 'postgresql', table: 'orders' },
 		// 使用 SQLite 的日誌儲存庫
 		log: { provider: 'sqlite', table: 'logs' },
         // 使用遠端 API 的產品儲存庫
@@ -94,6 +137,12 @@ const config = {
 	// 對 user 進行操作
 	console.log(users);
 
+	// 監控連線池狀態
+	const poolStatus = gateway.getProviderPoolStatus('mysql');
+	if (poolStatus) {
+		console.log(`MySQL 連線池: ${poolStatus.activeConnections}/${poolStatus.maxConnections} 個連線活躍中`);
+	}
+
 	// 完成後斷開所有資料提供者的連線
 	await gateway.disconnectAll();
 })();
@@ -101,7 +150,7 @@ const config = {
 
 ## 說明文件
 
-更詳細的資訊請參閱[說明文件](./docs/zh-TW/index.md)。
+更詳細的資訊請參閱[說明文件](./docs/README.md)。
 
 ## 核心概念
 
@@ -236,7 +285,8 @@ class CustomProvider implements DataProvider {
 ## 支援的資料來源
 
 - MySQL (需要 `mysql2`)
-- SQLite (需要 `sqlite` 和 `sqlite3`)
+- PostgreSQL (需要 `pg` 和 `@types/pg`)
+- SQLite (需要 `@sqlite/sqlite3` 或 `sqlite3`)
 - 遠端 API (透過 `RemoteProvider`)
 - 自訂資料提供者
 
