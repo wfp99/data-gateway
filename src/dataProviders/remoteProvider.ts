@@ -1,4 +1,4 @@
-import { DataProvider } from "../dataProvider";
+import { DataProvider, ConnectionPoolStatus } from "../dataProvider";
 import { Query, QueryResult } from "../queryObject";
 
 export interface RemoteProviderOptions
@@ -71,6 +71,24 @@ export class RemoteProvider implements DataProvider
 	}
 
 	/**
+	 * Gets the connection pool status.
+	 * @returns Always undefined as remote providers don't support connection pooling.
+	 */
+	getPoolStatus(): ConnectionPoolStatus | undefined
+	{
+		return undefined;
+	}
+
+	/**
+	 * Checks if the provider supports connection pooling.
+	 * @returns Always false for remote providers.
+	 */
+	supportsConnectionPooling(): boolean
+	{
+		return false;
+	}
+
+	/**
 	 * Forwards the query to the remote endpoint via a POST request.
 	 * @param query The query object.
 	 * @returns The QueryResult returned by the remote endpoint.
@@ -86,10 +104,14 @@ export class RemoteProvider implements DataProvider
 				case 'INSERT':
 				case 'UPDATE':
 				case 'DELETE':
-				case 'RAW':
 					return await this.post<T>(query);
 				default:
-					return { error: '[RemoteProvider.query] Unknown query type: ' + query.type };
+					// Handle legacy RAW queries and unknown types
+					if ((query as any).type === 'RAW')
+					{
+						return { error: '[RemoteProvider.query] RAW queries are not supported for security reasons' };
+					}
+					return { error: '[RemoteProvider.query] Unknown query type: ' + (query as any).type };
 			}
 		}
 		catch (err)
