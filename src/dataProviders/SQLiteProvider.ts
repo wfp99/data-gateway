@@ -1,5 +1,6 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult } from '../queryObject';
+import { getLogger, Logger } from '../logger';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 
@@ -47,6 +48,8 @@ export class SQLiteProvider implements DataProvider
 	private readonly maxReadConnections: number;
 	/** Current index for round-robin read connection selection */
 	private readConnectionIndex = 0;
+	/** Logger instance for this provider */
+	private readonly logger: ReturnType<typeof getLogger>;
 
 	/**
 	 * Creates an instance of SQLiteProvider.
@@ -57,6 +60,14 @@ export class SQLiteProvider implements DataProvider
 		this.options = options;
 		this.usePool = options.pool?.usePool === true;
 		this.maxReadConnections = options.pool?.maxReadConnections || 3;
+		this.logger = getLogger('SQLiteProvider');
+
+		this.logger.debug('SQLiteProvider initialized', {
+			filename: options.filename,
+			usePool: this.usePool,
+			maxReadConnections: this.maxReadConnections,
+			enableWAL: options.pool?.enableWAL
+		});
 	}
 
 	/**
@@ -65,16 +76,22 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private validateIdentifier(identifier: string): string
 	{
+		this.logger.debug('Validating SQLite identifier', { identifier });
+
 		if (!identifier || typeof identifier !== 'string')
 		{
+			this.logger.error('Invalid identifier: empty or non-string', { identifier });
 			throw new Error('Invalid identifier: empty or non-string');
 		}
 		// Allow letters at the beginning, followed by letters, numbers, underscores
 		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 		if (!pattern.test(identifier) || identifier.length > 64)
 		{
+			this.logger.error('Invalid SQLite identifier detected', { identifier, reason: 'Contains invalid characters or too long' });
 			throw new Error(`Invalid identifier: ${identifier}`);
 		}
+
+		this.logger.debug('SQLite identifier validated successfully', { identifier });
 		return identifier;
 	}
 
@@ -83,7 +100,10 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private validateAlias(alias: string): string
 	{
-		return this.validateIdentifier(alias);
+		this.logger.debug('Validating SQLite alias', { alias });
+		const result = this.validateIdentifier(alias);
+		this.logger.debug('SQLite alias validated successfully', { alias });
+		return result;
 	}
 
 	/**
@@ -91,10 +111,15 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private validateDirection(direction: string): string
 	{
+		this.logger.debug('Validating sort direction', { direction });
+
 		if (direction !== 'ASC' && direction !== 'DESC')
 		{
+			this.logger.error('Invalid sort direction detected', { direction, validDirections: ['ASC', 'DESC'] });
 			throw new Error(`Invalid direction: ${direction}`);
 		}
+
+		this.logger.debug('Sort direction validated successfully', { direction });
 		return direction;
 	}
 
@@ -125,6 +150,8 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private validateQuery(query: Query): void
 	{
+		this.logger.debug('Validating SQLite query structure', { type: query.type, table: query.table });
+
 		// Validate table name
 		if (query.table)
 		{
@@ -134,6 +161,7 @@ export class SQLiteProvider implements DataProvider
 		// Validate fields
 		if (query.type === 'SELECT' && query.fields)
 		{
+			this.logger.debug('Validating SELECT query fields', { fieldCount: query.fields.length });
 			for (const field of query.fields)
 			{
 				if (typeof field === 'string')
@@ -190,12 +218,16 @@ export class SQLiteProvider implements DataProvider
 		// Validate LIMIT and OFFSET
 		if (query.limit !== undefined && (!Number.isInteger(query.limit) || query.limit < 0))
 		{
+			this.logger.error('Invalid LIMIT value detected', { limit: query.limit });
 			throw new Error('Invalid LIMIT value');
 		}
 		if (query.offset !== undefined && (!Number.isInteger(query.offset) || query.offset < 0))
 		{
+			this.logger.error('Invalid OFFSET value detected', { offset: query.offset });
 			throw new Error('Invalid OFFSET value');
 		}
+
+		this.logger.debug('SQLite query structure validation completed successfully', { type: query.type, table: query.table });
 	}
 
 	/**
@@ -236,21 +268,31 @@ export class SQLiteProvider implements DataProvider
 	 */
 	async connect(): Promise<void>
 	{
+		this.logger.debug('Connecting to SQLite database', {
+			filename: this.options.filename,
+			usePool: this.usePool
+		});
+
 		// Create the primary connection
 		this.db = await open({
 			filename: this.options.filename,
 			driver: sqlite3.Database,
 		});
 
+		this.logger.debug('Primary database connection established');
+
 		// Enable WAL mode if pooling is enabled or explicitly requested
 		if (this.usePool || this.options.pool?.enableWAL)
 		{
+			this.logger.debug('Enabling WAL mode for better concurrency');
 			await this.db.exec('PRAGMA journal_mode = WAL;');
+			this.logger.debug('WAL mode enabled');
 		}
 
 		// Create read-only connections if pooling is enabled
 		if (this.usePool)
 		{
+			this.logger.debug(`Creating ${this.maxReadConnections} read-only connections for pool`);
 			for (let i = 0; i < this.maxReadConnections; i++)
 			{
 				const readDb = await open({
@@ -259,8 +301,18 @@ export class SQLiteProvider implements DataProvider
 					mode: sqlite3.OPEN_READONLY,
 				});
 				this.readPool.push(readDb);
+				this.logger.debug(`Read-only connection ${i + 1}/${this.maxReadConnections} created`);
 			}
+			this.logger.info('Connection pool created successfully', {
+				poolSize: this.readPool.length
+			});
 		}
+
+		this.logger.info('SQLite database connected successfully', {
+			filename: this.options.filename,
+			usePool: this.usePool,
+			readConnections: this.readPool.length
+		});
 	}
 
 	/**
@@ -268,19 +320,30 @@ export class SQLiteProvider implements DataProvider
 	 */
 	async disconnect(): Promise<void>
 	{
+		this.logger.debug('Disconnecting from SQLite database');
+
 		// Close read pool connections
-		for (const readDb of this.readPool)
+		if (this.readPool.length > 0)
 		{
-			await readDb.close();
+			this.logger.debug(`Closing ${this.readPool.length} read-only connections`);
+			for (const readDb of this.readPool)
+			{
+				await readDb.close();
+			}
+			this.readPool = [];
+			this.logger.debug('Read-only connections closed');
 		}
-		this.readPool = [];
 
 		// Close primary connection
 		if (this.db)
 		{
+			this.logger.debug('Closing primary database connection');
 			await this.db.close();
 			this.db = undefined;
+			this.logger.debug('Primary connection closed');
 		}
+
+		this.logger.info('SQLite database disconnected successfully');
 	}
 
 	/**
@@ -597,6 +660,8 @@ export class SQLiteProvider implements DataProvider
 	 */
 	async query<T = any>(query: Query): Promise<QueryResult<T>>
 	{
+		this.logger.debug('Executing SQLite query', { type: query.type, table: query.table });
+
 		try
 		{
 			// Validate security before executing query
@@ -605,25 +670,61 @@ export class SQLiteProvider implements DataProvider
 			switch (query.type)
 			{
 				case 'SELECT':
-					return { rows: await this.find(query) };
+					this.logger.debug('Executing SELECT query', { table: query.table, where: query.where });
+					const selectResult = { rows: await this.find(query) };
+					this.logger.info('SELECT query completed successfully', {
+						table: query.table,
+						rowCount: selectResult.rows?.length ?? 0
+					});
+					return selectResult;
+
 				case 'INSERT':
-					return { insertId: await this.insert(query) };
+					this.logger.debug('Executing INSERT query', { table: query.table });
+					const insertId = await this.insert(query);
+					this.logger.info('INSERT query completed successfully', {
+						table: query.table,
+						insertId
+					});
+					return { insertId };
+
 				case 'UPDATE':
-					return { affectedRows: await this.update(query) };
+					this.logger.debug('Executing UPDATE query', { table: query.table, where: query.where });
+					const updateResult = await this.update(query);
+					this.logger.info('UPDATE query completed successfully', {
+						table: query.table,
+						affectedRows: updateResult
+					});
+					return { affectedRows: updateResult };
+
 				case 'DELETE':
-					return { affectedRows: await this.delete(query) };
+					this.logger.debug('Executing DELETE query', { table: query.table, where: query.where });
+					const deleteResult = await this.delete(query);
+					this.logger.info('DELETE query completed successfully', {
+						table: query.table,
+						affectedRows: deleteResult
+					});
+					return { affectedRows: deleteResult };
+
 				default:
 					// Handle legacy RAW queries and unknown types
 					if ((query as any).type === 'RAW')
 					{
+						this.logger.warn('RAW query blocked for security reasons', { table: query.table });
 						return { error: '[SQLiteProvider.query] RAW queries are not supported for security reasons' };
 					}
+					this.logger.error('Unknown query type', { type: (query as any).type, table: query.table });
 					return { error: '[SQLiteProvider.query] Unknown query type: ' + (query as any).type };
 			}
 		}
 		catch (err)
 		{
-			return { error: `[SQLiteProvider.query] ${err instanceof Error ? err.message : String(err)}` };
+			const error = err instanceof Error ? err.message : String(err);
+			this.logger.error('SQLite query failed', {
+				error,
+				type: query.type,
+				table: query.table
+			});
+			return { error: `[SQLiteProvider.query] ${error}` };
 		}
 	}
 }
