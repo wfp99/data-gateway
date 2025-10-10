@@ -1,6 +1,7 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult } from '../queryObject';
 import { Pool, PoolClient, PoolConfig, Client, ClientConfig } from 'pg';
+import { getLogger } from '../logger';
 
 /**
  * Connection pool configuration options for PostgreSQL.
@@ -57,6 +58,11 @@ export class PostgreSQLProvider implements DataProvider
 	private readonly usePool: boolean;
 
 	/**
+	 * Logger instance for this provider.
+	 */
+	private readonly logger = getLogger('PostgreSQLProvider');
+
+	/**
 	 * Constructor that takes connection options.
 	 * @param options The PostgreSQL provider options.
 	 */
@@ -64,6 +70,12 @@ export class PostgreSQLProvider implements DataProvider
 	{
 		this.options = options;
 		this.usePool = options.pool?.usePool !== false; // Default to true
+		this.logger.debug('PostgreSQLProvider initialized', {
+			host: options.host,
+			database: options.database,
+			usePool: this.usePool,
+			max: options.pool?.max || 10
+		});
 	}
 
 	/**
@@ -72,16 +84,22 @@ export class PostgreSQLProvider implements DataProvider
 	 */
 	private validateIdentifier(identifier: string): string
 	{
+		this.logger.debug('Validating PostgreSQL identifier', { identifier });
+
 		if (!identifier || typeof identifier !== 'string')
 		{
+			this.logger.error('Invalid identifier: empty or non-string', { identifier });
 			throw new Error('Invalid identifier: empty or non-string');
 		}
 		// Allow letters at the beginning, followed by letters, numbers, underscores
 		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 		if (!pattern.test(identifier) || identifier.length > 64)
 		{
+			this.logger.error('Invalid PostgreSQL identifier detected', { identifier, reason: 'Contains invalid characters or too long' });
 			throw new Error(`Invalid identifier: ${identifier}`);
 		}
+
+		this.logger.debug('PostgreSQL identifier validated successfully', { identifier });
 		return identifier;
 	}
 
@@ -90,7 +108,10 @@ export class PostgreSQLProvider implements DataProvider
 	 */
 	private validateAlias(alias: string): string
 	{
-		return this.validateIdentifier(alias);
+		this.logger.debug('Validating PostgreSQL alias', { alias });
+		const result = this.validateIdentifier(alias);
+		this.logger.debug('PostgreSQL alias validated successfully', { alias });
+		return result;
 	}
 
 	/**
@@ -98,10 +119,15 @@ export class PostgreSQLProvider implements DataProvider
 	 */
 	private validateDirection(direction: string): string
 	{
+		this.logger.debug('Validating sort direction', { direction });
+
 		if (direction !== 'ASC' && direction !== 'DESC')
 		{
+			this.logger.error('Invalid sort direction detected', { direction, validDirections: ['ASC', 'DESC'] });
 			throw new Error(`Invalid direction: ${direction}`);
 		}
+
+		this.logger.debug('Sort direction validated successfully', { direction });
 		return direction;
 	}
 
@@ -132,6 +158,8 @@ export class PostgreSQLProvider implements DataProvider
 	 */
 	private validateQuery(query: Query): void
 	{
+		this.logger.debug('Validating PostgreSQL query structure', { type: query.type, table: query.table });
+
 		// Validate table name
 		if (query.table)
 		{
@@ -141,6 +169,7 @@ export class PostgreSQLProvider implements DataProvider
 		// Validate fields
 		if (query.type === 'SELECT' && query.fields)
 		{
+			this.logger.debug('Validating SELECT query fields', { fieldCount: query.fields.length });
 			for (const field of query.fields)
 			{
 				if (typeof field === 'string')
@@ -197,12 +226,16 @@ export class PostgreSQLProvider implements DataProvider
 		// Validate LIMIT and OFFSET
 		if (query.limit !== undefined && (!Number.isInteger(query.limit) || query.limit < 0))
 		{
+			this.logger.error('Invalid LIMIT value detected', { limit: query.limit });
 			throw new Error('Invalid LIMIT value');
 		}
 		if (query.offset !== undefined && (!Number.isInteger(query.offset) || query.offset < 0))
 		{
+			this.logger.error('Invalid OFFSET value detected', { offset: query.offset });
 			throw new Error('Invalid OFFSET value');
 		}
+
+		this.logger.debug('PostgreSQL query structure validation completed successfully', { type: query.type, table: query.table });
 	}
 
 	/**
@@ -212,17 +245,23 @@ export class PostgreSQLProvider implements DataProvider
 	{
 		if (!condition) return;
 
+		this.logger.debug('Validating PostgreSQL condition structure', { conditionType: Object.keys(condition) });
+
 		if (condition.and)
 		{
+			this.logger.debug('Validating AND condition', { subconditionCount: condition.and.length });
 			condition.and.forEach((c: any) => this.validateConditionStructure(c));
 		} else if (condition.or)
 		{
+			this.logger.debug('Validating OR condition', { subconditionCount: condition.or.length });
 			condition.or.forEach((c: any) => this.validateConditionStructure(c));
 		} else if (condition.not)
 		{
+			this.logger.debug('Validating NOT condition');
 			this.validateConditionStructure(condition.not);
 		} else if (condition.field)
 		{
+			this.logger.debug('Validating field condition', { field: condition.field, operator: condition.op });
 			this.validateIdentifier(condition.field);
 			if (condition.op)
 			{
@@ -230,19 +269,23 @@ export class PostgreSQLProvider implements DataProvider
 			}
 			if (condition.subquery)
 			{
+				this.logger.debug('Validating subquery in condition');
 				this.validateQuery(condition.subquery);
 			}
 		} else if (condition.like)
 		{
+			this.logger.debug('Validating LIKE condition', { field: condition.like.field });
 			this.validateIdentifier(condition.like.field);
 		}
 	}
 
 	/**
-	 * Connects to the PostgreSQL database using either a connection pool or a single connection.
+	 * Connects to the PostgreSQL database using either a connection pool or a single client.
 	 */
 	async connect(): Promise<void>
 	{
+		this.logger.debug('Connecting to PostgreSQL database', { usePool: this.usePool });
+
 		if (this.usePool)
 		{
 			const poolConfig = this.options.pool || {};
@@ -255,43 +298,60 @@ export class PostgreSQLProvider implements DataProvider
 				allowExitOnIdle: poolConfig.allowExitOnIdle || false,
 			};
 
+			this.logger.debug('Creating PostgreSQL connection pool', {
+				max: poolOptions.max,
+				min: poolOptions.min,
+				idleTimeoutMillis: poolOptions.idleTimeoutMillis
+			});
+
 			this.pool = new Pool(poolOptions);
 
 			// Test the pool with a simple query
 			try
 			{
+				this.logger.debug('Testing connection pool with simple query');
 				const testClient = await this.pool.connect();
 				await testClient.query('SELECT 1');
 				testClient.release();
+				this.logger.info('PostgreSQL connection pool created successfully');
 			}
 			catch (error)
 			{
+				this.logger.error('Connection pool test failed', { error: error instanceof Error ? error.message : String(error) });
 				await this.pool.end();
 				throw error;
 			}
 		}
 		else
 		{
+			this.logger.debug('Creating single PostgreSQL client');
 			this.client = new Client(this.options);
 			await this.client.connect();
+			this.logger.info('PostgreSQL single client connected successfully');
 		}
-	}
-
-	/**
+	}	/**
 	 * Closes the PostgreSQL connection or connection pool.
 	 */
 	async disconnect(): Promise<void>
 	{
+		this.logger.debug('Disconnecting from PostgreSQL database');
+
 		if (this.pool)
 		{
+			this.logger.debug('Ending connection pool');
 			await this.pool.end();
 			this.pool = undefined;
+			this.logger.info('Connection pool ended successfully');
 		}
 		else if (this.client)
 		{
+			this.logger.debug('Ending client connection');
 			await this.client.end();
 			this.client = undefined;
+			this.logger.info('Client connection ended successfully');
 		}
+
+		this.logger.info('PostgreSQL database disconnected');
 	}
 
 	/**
@@ -724,6 +784,8 @@ export class PostgreSQLProvider implements DataProvider
 	 */
 	async query<T = any>(query: Query): Promise<QueryResult<T>>
 	{
+		this.logger.debug('Executing PostgreSQL query', { type: query.type, table: query.table });
+
 		try
 		{
 			// Validate security before executing query
@@ -732,29 +794,61 @@ export class PostgreSQLProvider implements DataProvider
 			switch (query.type)
 			{
 				case 'SELECT':
-					return { rows: await this.find<T>(query) };
+					this.logger.debug('Executing SELECT query', { table: query.table, where: query.where });
+					const selectResult = { rows: await this.find<T>(query) };
+					this.logger.info('SELECT query completed successfully', {
+						table: query.table,
+						rowCount: selectResult.rows?.length ?? 0
+					});
+					return selectResult;
 
 				case 'INSERT':
-					return { insertId: await this.insert(query) };
+					this.logger.debug('Executing INSERT query', { table: query.table });
+					const insertId = await this.insert(query);
+					this.logger.info('INSERT query completed successfully', {
+						table: query.table,
+						insertId
+					});
+					return { insertId };
 
 				case 'UPDATE':
-					return { affectedRows: await this.update(query) };
+					this.logger.debug('Executing UPDATE query', { table: query.table, where: query.where });
+					const updateResult = await this.update(query);
+					this.logger.info('UPDATE query completed successfully', {
+						table: query.table,
+						affectedRows: updateResult
+					});
+					return { affectedRows: updateResult };
 
 				case 'DELETE':
-					return { affectedRows: await this.delete(query) };
+					this.logger.debug('Executing DELETE query', { table: query.table, where: query.where });
+					const deleteResult = await this.delete(query);
+					this.logger.info('DELETE query completed successfully', {
+						table: query.table,
+						affectedRows: deleteResult
+					});
+					return { affectedRows: deleteResult };
 
 				default:
 					// Handle legacy RAW queries and unknown types
 					if ((query as any).type === 'RAW')
 					{
+						this.logger.warn('RAW query blocked for security reasons', { table: query.table });
 						return { error: '[PostgreSQLProvider.query] RAW queries are not supported for security reasons' };
 					}
+					this.logger.error('Unknown query type', { type: (query as any).type, table: query.table });
 					return { error: '[PostgreSQLProvider.query] Unknown query type: ' + (query as any).type };
 			}
 		}
 		catch (err)
 		{
-			return { error: `[PostgreSQLProvider.query] ${err instanceof Error ? err.message : String(err)}` };
+			const error = err instanceof Error ? err.message : String(err);
+			this.logger.error('PostgreSQL query failed', {
+				error,
+				type: query.type,
+				table: query.table
+			});
+			return { error: `[PostgreSQLProvider.query] ${error}` };
 		}
 	}
 }
