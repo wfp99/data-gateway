@@ -2,6 +2,7 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult } from '../queryObject';
 import mysql, { Connection, ConnectionOptions, Pool, PoolOptions } from 'mysql2/promise';
+import { getLogger } from '../logger';
 
 /**
  * Connection pool configuration options.
@@ -58,6 +59,11 @@ export class MySQLProvider implements DataProvider
 	private readonly usePool: boolean;
 
 	/**
+	 * Logger instance for this provider.
+	 */
+	private readonly logger = getLogger('MySQLProvider');
+
+	/**
 	 * Constructor that takes connection options.
 	 * @param options The MySQL provider options.
 	 */
@@ -65,6 +71,12 @@ export class MySQLProvider implements DataProvider
 	{
 		this.options = options;
 		this.usePool = options.pool?.usePool !== false; // Default to true
+		this.logger.debug('MySQLProvider initialized', {
+			host: options.host,
+			database: options.database,
+			usePool: this.usePool,
+			connectionLimit: options.pool?.connectionLimit || 10
+		});
 	}
 
 	/**
@@ -72,6 +84,8 @@ export class MySQLProvider implements DataProvider
 	 */
 	async connect(): Promise<void>
 	{
+		this.logger.debug('Connecting to MySQL database', { usePool: this.usePool });
+
 		if (this.usePool)
 		{
 			const poolConfig = this.options.pool || {};
@@ -91,6 +105,11 @@ export class MySQLProvider implements DataProvider
 				(poolOptions as any).idleTimeout = poolConfig.timeout;
 			}
 
+			this.logger.debug('Creating MySQL connection pool', {
+				connectionLimit: poolOptions.connectionLimit,
+				queueLimit: poolOptions.queueLimit
+			});
+
 			this.pool = mysql.createPool(poolOptions);
 
 			// Test the pool with a simple query if preConnect is enabled
@@ -98,20 +117,27 @@ export class MySQLProvider implements DataProvider
 			{
 				try
 				{
+					this.logger.debug('Testing connection pool with ping');
 					const testConnection = await this.pool.getConnection();
 					await testConnection.ping();
 					testConnection.release();
+					this.logger.debug('Connection pool test successful');
 				}
 				catch (error)
 				{
+					this.logger.error('Connection pool test failed', { error: error instanceof Error ? error.message : String(error) });
 					await this.pool.end();
 					throw error;
 				}
 			}
+
+			this.logger.info('MySQL connection pool created successfully');
 		}
 		else
 		{
+			this.logger.debug('Creating single MySQL connection');
 			this.connection = await mysql.createConnection(this.options);
+			this.logger.info('MySQL single connection created successfully');
 		}
 	}
 
@@ -120,15 +146,21 @@ export class MySQLProvider implements DataProvider
 	 */
 	async disconnect(): Promise<void>
 	{
+		this.logger.debug('Disconnecting from MySQL database');
+
 		if (this.pool)
 		{
+			this.logger.debug('Closing connection pool');
 			await this.pool.end();
 			this.pool = undefined;
+			this.logger.info('MySQL connection pool closed');
 		}
 		else if (this.connection)
 		{
+			this.logger.debug('Closing single connection');
 			await this.connection.end();
 			this.connection = undefined;
+			this.logger.info('MySQL single connection closed');
 		}
 	}
 
@@ -204,11 +236,16 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateIdentifier(identifier: string): string
 	{
+		this.logger.debug('Validating SQL identifier', { identifier });
+
 		// Only allow alphanumeric characters, underscores, and dots (for schema.table)
 		if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/.test(identifier))
 		{
+			this.logger.error('Invalid SQL identifier detected', { identifier, reason: 'Contains invalid characters' });
 			throw new Error(`Invalid identifier: ${identifier}`);
 		}
+
+		this.logger.debug('SQL identifier validated successfully', { identifier });
 		return identifier;
 	}
 
@@ -219,11 +256,16 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateAlias(alias: string): string
 	{
+		this.logger.debug('Validating SQL alias', { alias });
+
 		// Only allow alphanumeric characters and underscores
 		if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias))
 		{
+			this.logger.error('Invalid SQL alias detected', { alias, reason: 'Contains invalid characters' });
 			throw new Error(`Invalid alias: ${alias}`);
 		}
+
+		this.logger.debug('SQL alias validated successfully', { alias });
 		return alias;
 	}
 
@@ -234,12 +276,18 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateDirection(direction: string): string
 	{
+		this.logger.debug('Validating ORDER BY direction', { direction });
+
 		const validDirections = ['ASC', 'DESC'];
 		if (!validDirections.includes(direction.toUpperCase()))
 		{
+			this.logger.error('Invalid ORDER BY direction detected', { direction, validDirections });
 			throw new Error(`Invalid ORDER BY direction: ${direction}`);
 		}
-		return direction.toUpperCase();
+
+		const validatedDirection = direction.toUpperCase();
+		this.logger.debug('ORDER BY direction validated successfully', { direction: validatedDirection });
+		return validatedDirection;
 	}
 
 	/**
@@ -249,12 +297,18 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateJoinType(joinType: string): string
 	{
+		this.logger.debug('Validating JOIN type', { joinType });
+
 		const validJoinTypes = ['INNER', 'LEFT', 'RIGHT', 'FULL'];
 		if (!validJoinTypes.includes(joinType.toUpperCase()))
 		{
+			this.logger.error('Invalid JOIN type detected', { joinType, validJoinTypes });
 			throw new Error(`Invalid JOIN type: ${joinType}`);
 		}
-		return joinType.toUpperCase();
+
+		const validatedJoinType = joinType.toUpperCase();
+		this.logger.debug('JOIN type validated successfully', { joinType: validatedJoinType });
+		return validatedJoinType;
 	}
 
 	/**
@@ -263,6 +317,8 @@ export class MySQLProvider implements DataProvider
 	 */
 	private buildSelectSQL(query: Query): { sql: string; params: any[] }
 	{
+		this.logger.debug('Building SELECT SQL statement', { table: query.table, fields: query.fields });
+
 		let sql = 'SELECT ';
 		const params: any[] = [];
 
@@ -333,6 +389,8 @@ export class MySQLProvider implements DataProvider
 			sql += ` OFFSET ?`;
 			params.push(query.offset);
 		}
+
+		this.logger.debug('SELECT SQL statement built successfully', { sql, paramCount: params.length });
 		return { sql, params };
 	}
 
@@ -342,7 +400,12 @@ export class MySQLProvider implements DataProvider
 	 */
 	private buildInsertSQL(query: Query): { sql: string; params: any[] }
 	{
-		if (!query.values) throw new Error('INSERT must have values');
+		this.logger.debug('Building INSERT SQL statement', { table: query.table, values: query.values });
+
+		if (!query.values) {
+			this.logger.error('INSERT query missing values', { table: query.table });
+			throw new Error('INSERT must have values');
+		}
 
 		const tableName = this.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
@@ -352,6 +415,8 @@ export class MySQLProvider implements DataProvider
 
 		const sql = `INSERT INTO \`${tableName}\` (${validatedKeys.map(k => `\`${k}\``).join(', ')}) VALUES (${keys.map(_ => '?').join(', ')})`;
 		const params = keys.map(k => query.values![k]);
+
+		this.logger.debug('INSERT SQL statement built successfully', { sql, paramCount: params.length, columns: validatedKeys });
 		return { sql, params };
 	}
 
@@ -361,7 +426,12 @@ export class MySQLProvider implements DataProvider
 	 */
 	private buildUpdateSQL(query: Query): { sql: string; params: any[] }
 	{
-		if (!query.values) throw new Error('UPDATE must have values');
+		this.logger.debug('Building UPDATE SQL statement', { table: query.table, values: query.values, where: query.where });
+
+		if (!query.values) {
+			this.logger.error('UPDATE query missing values', { table: query.table });
+			throw new Error('UPDATE must have values');
+		}
 
 		const tableName = this.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
@@ -375,6 +445,8 @@ export class MySQLProvider implements DataProvider
 		{
 			sql += ' WHERE ' + this.conditionToSQL(query.where, params);
 		}
+
+		this.logger.debug('UPDATE SQL statement built successfully', { sql, paramCount: params.length, columns: validatedKeys });
 		return { sql, params };
 	}
 
@@ -384,6 +456,8 @@ export class MySQLProvider implements DataProvider
 	 */
 	private buildDeleteSQL(query: Query): { sql: string; params: any[] }
 	{
+		this.logger.debug('Building DELETE SQL statement', { table: query.table, where: query.where });
+
 		const tableName = this.validateIdentifier(query.table);
 		let sql = `DELETE FROM \`${tableName}\``;
 		const params: any[] = [];
@@ -391,6 +465,8 @@ export class MySQLProvider implements DataProvider
 		{
 			sql += ' WHERE ' + this.conditionToSQL(query.where, params);
 		}
+
+		this.logger.debug('DELETE SQL statement built successfully', { sql, paramCount: params.length });
 		return { sql, params };
 	}
 
@@ -401,6 +477,8 @@ export class MySQLProvider implements DataProvider
 	 */
 	private conditionToSQL(cond: Condition, params: any[]): string
 	{
+		this.logger.debug('Converting condition to SQL', { condition: cond });
+
 		// Handle subquery conditions: { field, op: 'IN'|'NOT IN', subquery }
 		if ('field' in cond && 'op' in cond && 'subquery' in cond)
 		{
@@ -408,13 +486,16 @@ export class MySQLProvider implements DataProvider
 			const allowedOps = ['IN', 'NOT IN'];
 			if (!allowedOps.includes(cond.op))
 			{
+				this.logger.error('Invalid operator for subquery condition', { operator: cond.op, allowedOps });
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			// Build the subquery into SQL and merge its parameters
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
 			const fieldName = this.validateIdentifier(cond.field);
-			return `\`${fieldName}\` ${cond.op} (${sql})`;
+			const result = `\`${fieldName}\` ${cond.op} (${sql})`;
+			this.logger.debug('Subquery condition converted to SQL', { result });
+			return result;
 		}
 		// Handle standard field comparisons: { field, op, value }
 		else if ('field' in cond && 'op' in cond && 'value' in cond)
@@ -423,12 +504,15 @@ export class MySQLProvider implements DataProvider
 			const allowedOps = ['=', '!=', '<', '<=', '>', '>='];
 			if (!allowedOps.includes(cond.op))
 			{
+				this.logger.error('Invalid comparison operator', { operator: cond.op, allowedOps });
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			// Validate field name
 			const fieldName = this.validateIdentifier(cond.field);
 			params.push(cond.value);
-			return `\`${fieldName}\` ${cond.op} ?`;
+			const result = `\`${fieldName}\` ${cond.op} ?`;
+			this.logger.debug('Field comparison condition converted to SQL', { result });
+			return result;
 		}
 		// Handle IN/NOT IN conditions with an array of values: { field, op, values }
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
@@ -436,35 +520,51 @@ export class MySQLProvider implements DataProvider
 			const allowedOps = ['IN', 'NOT IN'];
 			if (!allowedOps.includes(cond.op))
 			{
+				this.logger.error('Invalid IN/NOT IN operator', { operator: cond.op, allowedOps });
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			const fieldName = this.validateIdentifier(cond.field);
 			params.push(...cond.values);
-			return `\`${fieldName}\` ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			const result = `\`${fieldName}\` ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			this.logger.debug('IN/NOT IN condition converted to SQL', { result, valueCount: cond.values.length });
+			return result;
 		}
 		// Handle an array of AND conditions
 		else if ('and' in cond)
 		{
-			return '(' + cond.and.map((c) => this.conditionToSQL(c, params)).join(' AND ') + ')';
+			this.logger.debug('Processing AND condition', { conditionCount: cond.and.length });
+			const result = '(' + cond.and.map((c) => this.conditionToSQL(c, params)).join(' AND ') + ')';
+			this.logger.debug('AND condition converted to SQL', { result });
+			return result;
 		}
 		// Handle an array of OR conditions
 		else if ('or' in cond)
 		{
-			return '(' + cond.or.map((c) => this.conditionToSQL(c, params)).join(' OR ') + ')';
+			this.logger.debug('Processing OR condition', { conditionCount: cond.or.length });
+			const result = '(' + cond.or.map((c) => this.conditionToSQL(c, params)).join(' OR ') + ')';
+			this.logger.debug('OR condition converted to SQL', { result });
+			return result;
 		}
 		// Handle a NOT condition
 		else if ('not' in cond)
 		{
-			return 'NOT (' + this.conditionToSQL(cond.not, params) + ')';
+			this.logger.debug('Processing NOT condition');
+			const result = 'NOT (' + this.conditionToSQL(cond.not, params) + ')';
+			this.logger.debug('NOT condition converted to SQL', { result });
+			return result;
 		}
 		// Handle LIKE conditions: { like: { field, pattern } }
 		else if ('like' in cond)
 		{
+			this.logger.debug('Processing LIKE condition', { field: cond.like.field, pattern: cond.like.pattern });
 			const fieldName = this.validateIdentifier(cond.like.field);
 			params.push(cond.like.pattern);
-			return `\`${fieldName}\` LIKE ?`;
+			const result = `\`${fieldName}\` LIKE ?`;
+			this.logger.debug('LIKE condition converted to SQL', { result });
+			return result;
 		}
 		// All other condition shapes are considered an error
+		this.logger.error('Unknown condition type detected', { condition: cond });
 		throw new Error('Unknown condition type');
 	}
 
@@ -555,6 +655,8 @@ export class MySQLProvider implements DataProvider
 	 */
 	async query<T = any>(query: Query): Promise<QueryResult<T>>
 	{
+		this.logger.debug('Executing MySQL query', { type: query.type, table: query.table });
+
 		try
 		{
 			// Validate query structure before processing
@@ -563,29 +665,43 @@ export class MySQLProvider implements DataProvider
 			switch (query.type)
 			{
 				case 'SELECT':
-					return { rows: await this.find<T>(query) };
+					const rows = await this.find<T>(query);
+					this.logger.debug('SELECT query completed', { table: query.table, rowCount: rows.length });
+					return { rows };
 
 				case 'INSERT':
-					return { insertId: await this.insert(query) };
+					const insertId = await this.insert(query);
+					this.logger.info('INSERT query completed', { table: query.table, insertId });
+					return { insertId };
 
 				case 'UPDATE':
-					return { affectedRows: await this.update(query) };
+					const updatedRows = await this.update(query);
+					this.logger.info('UPDATE query completed', { table: query.table, affectedRows: updatedRows });
+					return { affectedRows: updatedRows };
 
 				case 'DELETE':
-					return { affectedRows: await this.delete(query) };
+					const deletedRows = await this.delete(query);
+					this.logger.info('DELETE query completed', { table: query.table, affectedRows: deletedRows });
+					return { affectedRows: deletedRows };
 
 				default:
 					// Handle legacy RAW queries and unknown types
 					if ((query as any).type === 'RAW')
 					{
-						return { error: '[MySQLProvider.query] RAW queries are not supported for security reasons' };
+						const errorMsg = '[MySQLProvider.query] RAW queries are not supported for security reasons';
+						this.logger.error(errorMsg);
+						return { error: errorMsg };
 					}
-					return { error: '[MySQLProvider.query] Unknown query type: ' + (query as any).type };
+					const unknownTypeError = '[MySQLProvider.query] Unknown query type: ' + (query as any).type;
+					this.logger.error(unknownTypeError, { type: (query as any).type });
+					return { error: unknownTypeError };
 			}
 		}
 		catch (err)
 		{
-			return { error: `[MySQLProvider.query] ${err instanceof Error ? err.message : String(err)}` };
+			const errorMsg = `[MySQLProvider.query] ${err instanceof Error ? err.message : String(err)}`;
+			this.logger.error(errorMsg, { type: query.type, table: query.table });
+			return { error: errorMsg };
 		}
 	}
 
@@ -595,12 +711,15 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateQuery(query: Query): void
 	{
+		this.logger.debug('Validating query structure', { type: query.type, table: query.table });
+
 		// Validate table name
 		this.validateIdentifier(query.table);
 
 		// Validate fields
 		if (query.fields)
 		{
+			this.logger.debug('Validating query fields', { fieldCount: query.fields.length });
 			for (const field of query.fields)
 			{
 				if (typeof field === 'string')
@@ -613,6 +732,7 @@ export class MySQLProvider implements DataProvider
 					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
 					if (!validAggregates.includes(field.type))
 					{
+						this.logger.error('Invalid aggregate type detected', { aggregateType: field.type, validAggregates });
 						throw new Error(`Invalid aggregate type: ${field.type}`);
 					}
 					this.validateIdentifier(field.field);
@@ -657,17 +777,21 @@ export class MySQLProvider implements DataProvider
 		// Validate WHERE condition
 		if (query.where)
 		{
+			this.logger.debug('Validating WHERE condition');
 			this.validateCondition(query.where);
 		}
 
 		// Validate values (for INSERT/UPDATE)
 		if (query.values)
 		{
+			this.logger.debug('Validating query values', { columnCount: Object.keys(query.values).length });
 			for (const key of Object.keys(query.values))
 			{
 				this.validateIdentifier(key);
 			}
 		}
+
+		this.logger.debug('Query structure validation completed successfully', { type: query.type, table: query.table });
 	}
 
 	/**
@@ -676,12 +800,15 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateCondition(condition: any): void
 	{
+		this.logger.debug('Validating condition structure', { conditionType: Object.keys(condition) });
+
 		if ('field' in condition)
 		{
 			this.validateIdentifier(condition.field);
 		}
 		if ('and' in condition)
 		{
+			this.logger.debug('Validating AND condition', { subconditionCount: condition.and.length });
 			for (const cond of condition.and)
 			{
 				this.validateCondition(cond);
@@ -689,6 +816,7 @@ export class MySQLProvider implements DataProvider
 		}
 		if ('or' in condition)
 		{
+			this.logger.debug('Validating OR condition', { subconditionCount: condition.or.length });
 			for (const cond of condition.or)
 			{
 				this.validateCondition(cond);
@@ -696,10 +824,12 @@ export class MySQLProvider implements DataProvider
 		}
 		if ('not' in condition)
 		{
+			this.logger.debug('Validating NOT condition');
 			this.validateCondition(condition.not);
 		}
 		if ('like' in condition)
 		{
+			this.logger.debug('Validating LIKE condition', { field: condition.like.field });
 			this.validateIdentifier(condition.like.field);
 		}
 		if ('subquery' in condition)
