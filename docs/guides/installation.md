@@ -28,7 +28,7 @@ npm install pg @types/pg
 
 ### SQLite 支援
 ```bash
-npm install sqlite sqlite3
+npm install sqlite3
 ```
 
 ### 遠端 API 支援

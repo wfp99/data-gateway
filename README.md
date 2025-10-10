@@ -11,6 +11,7 @@ A lightweight, extensible data access gateway for Node.js, supporting multiple d
 
 - Supports multiple data sources: MySQL, PostgreSQL, SQLite, Remote API
 - **Connection pooling support** for improved performance and resource management
+- **Configurable logging** with multiple log levels (ALL, DEBUG, INFO, WARN, ERROR, OFF)
 - Customizable providers and middleware
 - Type-safe, written in TypeScript
 - Unified query object model for CRUD and advanced queries
@@ -32,9 +33,7 @@ npm install mysql2
 npm install pg @types/pg
 
 # For SQLite support:
-npm install @sqlite/sqlite3
-# or alternatively:
-# npm install sqlite3
+npm install sqlite3
 
 # For Remote API only (no additional dependencies needed):
 # You're all set! 🎉
@@ -48,7 +47,7 @@ npm install @sqlite/sqlite3
 ## Quick Start
 
 ```typescript
-import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, PostgreSQLProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
+import { DataGateway, LogLevel, MySQLProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
 
 // Define configuration for providers and repositories
 const config = {
@@ -70,39 +69,6 @@ const config = {
 				}
 			} as MySQLProviderOptions
 		},
-		// PostgreSQL provider configuration with connection pooling
-		postgresql: {
-			type: 'postgresql',
-			options: {
-				host: 'localhost',
-				user: 'postgres',
-				password: '',
-				database: 'test',
-				port: 5432,
-				// Connection pool configuration (optional)
-				pool: {
-					usePool: true,              // Enable connection pooling (default: true)
-					max: 10,                   // Maximum connections in pool (default: 10)
-					min: 0,                    // Minimum connections to maintain (default: 0)
-					idleTimeoutMillis: 10000,  // Idle connection timeout (default: 10000ms)
-					connectionTimeoutMillis: 30000, // Connection acquisition timeout (default: 30000ms)
-				}
-			} as PostgreSQLProviderOptions
-		},
-		// SQLite provider configuration with read connection pooling
-		sqlite: {
-			type: 'sqlite',
-			options: {
-				filename: './test.db',
-				// Connection pool configuration for read operations (optional)
-				pool: {
-					usePool: true,              // Enable read connection pooling (default: false)
-					readPoolSize: 3,           // Maximum read-only connections (default: 3)
-					acquireTimeout: 30000,     // Connection acquisition timeout (default: 30000ms)
-					idleTimeout: 300000,       // Idle connection timeout (default: 300000ms)
-				}
-			} as SQLiteProviderOptions
-		},
         // Remote API provider configuration
         remote: {
             type: 'remote',
@@ -115,12 +81,13 @@ const config = {
 	repositories: {
 		// User repository using MySQL
 		user: { provider: 'mysql', table: 'users' },
-		// Order repository using PostgreSQL
-		order: { provider: 'postgresql', table: 'orders' },
-		// Log repository using SQLite
-		log: { provider: 'sqlite', table: 'logs' },
         // Product repository using a remote API
         product: { provider: 'remote' }
+	},
+	// Logging configuration (optional)
+	logging: {
+		level: LogLevel.INFO,     // Log level: ALL, DEBUG, INFO, WARN, ERROR, OFF
+		format: 'pretty'          // Format: 'pretty' or 'json'
 	}
 };
 
@@ -151,6 +118,21 @@ const config = {
 ## Documentation
 
 For more detailed information, please see the [documentation](./docs/README.en.md).
+
+### Quick Links
+- [Installation Guide](./docs/guides/installation.en.md) - Detailed installation instructions
+- [Quick Start Guide](./docs/guides/quick-start.en.md) - Get started in 5 minutes
+- [Basic Usage](./docs/guides/basic-usage.en.md) - Common usage patterns
+- [Logging Guide](./docs/guides/logging.en.md) - Configure and use the logging system
+- [Architecture Design](./docs/core/architecture.en.md) - Understanding the core concepts
+- [Connection Pooling](./docs/advanced/connection-pooling.en.md) - Advanced performance features
+
+### Provider Guides
+- [MySQL Provider](./docs/providers/mysql.en.md)
+- [PostgreSQL Provider](./docs/providers/postgresql.en.md)
+- [SQLite Provider](./docs/providers/sqlite.en.md)
+- [Remote API Provider](./docs/providers/remote.en.md)
+- [Custom Providers](./docs/providers/custom.en.md)
 
 ## Core Concepts
 
@@ -270,6 +252,40 @@ const config = {
 };
 ```
 
+## Logging
+
+Data Gateway provides comprehensive logging functionality with multiple log levels and formats to help you monitor and debug your applications.
+
+### Basic Configuration
+
+```typescript
+import { LogLevel } from '@wfp99/data-gateway';
+
+const config = {
+	providers: { /* ... */ },
+	repositories: { /* ... */ },
+	logging: {
+		level: LogLevel.INFO,     // Set log level
+		format: 'pretty'          // 'pretty' or 'json'
+	}
+};
+
+const gateway = await DataGateway.build(config);
+```
+
+### Log Levels
+
+```typescript
+LogLevel.ALL    // 0  - Show all logs
+LogLevel.DEBUG  // 10 - Debug information
+LogLevel.INFO   // 20 - General information (default)
+LogLevel.WARN   // 30 - Warning messages
+LogLevel.ERROR  // 40 - Error messages
+LogLevel.OFF    // 50 - Disable logging
+```
+
+For detailed logging configuration and examples, see the [Logging Guide](./docs/guides/logging.en.md).
+
 ## Custom Provider Example
 
 ```typescript
@@ -284,11 +300,11 @@ class CustomProvider implements DataProvider {
 
 ## Supported Data Sources
 
-- MySQL (requires `mysql2`)
-- PostgreSQL (requires `pg` and `@types/pg`)
-- SQLite (requires `@sqlite/sqlite3` or `sqlite3`)
-- Remote API (via `RemoteProvider`)
-- Custom providers
+- **MySQL** (requires `mysql2`)
+- **PostgreSQL** (requires `pg` and `@types/pg`)
+- **SQLite** (requires `sqlite3`)
+- **Remote API** (via `RemoteProvider`)
+- **Custom providers** (implement `DataProvider` interface)
 
 ## License
 

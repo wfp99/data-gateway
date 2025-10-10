@@ -11,7 +11,7 @@ npm install @wfp99/data-gateway
 # 安裝您需要的資料庫驅動程式（選擇其中一個或多個）
 npm install mysql2        # MySQL/MariaDB
 npm install pg @types/pg  # PostgreSQL
-npm install sqlite sqlite3   # SQLite
+npm install sqlite3   # SQLite
 # Remote API 無需額外安裝
 ```
 

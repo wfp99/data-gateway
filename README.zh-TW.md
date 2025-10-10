@@ -11,6 +11,7 @@
 
 - 支援多種資料來源：MySQL、PostgreSQL、SQLite、遠端 API
 - **連線池支援**，提升效能和資源管理
+- **可配置的日誌記錄**，支援多種日誌級別（ALL、DEBUG、INFO、WARN、ERROR、OFF）
 - 可自訂的提供者和中介軟體
 - 型別安全，使用 TypeScript 撰寫
 - 統一的查詢物件模型，支援 CRUD 和進階查詢
@@ -32,9 +33,7 @@ npm install mysql2
 npm install pg @types/pg
 
 # 若需要 SQLite 支援：
-npm install @sqlite/sqlite3
-# 或者可以使用：
-# npm install sqlite3
+npm install sqlite3
 
 # 若只使用遠端 API（不需要額外依賴）：
 # 您已經準備好了！🎉
@@ -48,7 +47,7 @@ npm install @sqlite/sqlite3
 ## 快速入門
 
 ```typescript
-import { DataGateway, MySQLProviderOptions, SQLiteProviderOptions, PostgreSQLProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
+import { DataGateway, LogLevel, MySQLProviderOptions, RemoteProviderOptions } from '@wfp99/data-gateway';
 
 // 定義提供者和儲存庫的設定
 const config = {
@@ -70,39 +69,6 @@ const config = {
 				}
 			} as MySQLProviderOptions
 		},
-		// PostgreSQL 提供者設定，包含連線池設定
-		postgresql: {
-			type: 'postgresql',
-			options: {
-				host: 'localhost',
-				user: 'postgres',
-				password: '',
-				database: 'test',
-				port: 5432,
-				// 連線池設定（可選）
-				pool: {
-					usePool: true,              // 啟用連線池（預設：true）
-					max: 10,                   // 連線池最大連線數（預設：10）
-					min: 0,                    // 維持的最小連線數（預設：0）
-					idleTimeoutMillis: 10000,  // 閒置連線超時時間（預設：10000ms）
-					connectionTimeoutMillis: 30000, // 連線獲取超時時間（預設：30000ms）
-				}
-			} as PostgreSQLProviderOptions
-		},
-		// SQLite 提供者設定，包含讀取連線池設定
-		sqlite: {
-			type: 'sqlite',
-			options: {
-				filename: './test.db',
-				// 讀取操作連線池設定（可選）
-				pool: {
-					usePool: true,              // 啟用讀取連線池（預設：false）
-					readPoolSize: 3,           // 最大唯讀連線數（預設：3）
-					acquireTimeout: 30000,     // 連線獲取超時時間（預設：30000ms）
-					idleTimeout: 300000,       // 閒置連線超時時間（預設：300000ms）
-				}
-			} as SQLiteProviderOptions
-		},
         // 遠端 API 提供者設定
         remote: {
             type: 'remote',
@@ -115,12 +81,13 @@ const config = {
 	repositories: {
 		// 使用 MySQL 的使用者儲存庫
 		user: { provider: 'mysql', table: 'users' },
-		// 使用 PostgreSQL 的訂單儲存庫
-		order: { provider: 'postgresql', table: 'orders' },
-		// 使用 SQLite 的日誌儲存庫
-		log: { provider: 'sqlite', table: 'logs' },
         // 使用遠端 API 的產品儲存庫
         product: { provider: 'remote' }
+	},
+	// 日誌配置（可選）
+	logging: {
+		level: LogLevel.INFO,     // 日誌級別：ALL, DEBUG, INFO, WARN, ERROR, OFF
+		format: 'pretty'          // 格式：'pretty' 或 'json'
 	}
 };
 
@@ -151,6 +118,21 @@ const config = {
 ## 說明文件
 
 更詳細的資訊請參閱[說明文件](./docs/README.md)。
+
+### 快速連結
+- [安裝指南](./docs/guides/installation.md) - 詳細安裝說明
+- [快速入門指南](./docs/guides/quick-start.md) - 5 分鐘快速上手
+- [基本使用方法](./docs/guides/basic-usage.md) - 常用操作模式
+- [日誌功能指南](./docs/guides/logging.md) - 配置和使用日誌系統
+- [架構設計](./docs/core/architecture.md) - 理解核心概念
+- [連線池管理](./docs/advanced/connection-pooling.md) - 進階效能功能
+
+### 提供者指南
+- [MySQL Provider](./docs/providers/mysql.md)
+- [PostgreSQL Provider](./docs/providers/postgresql.md)
+- [SQLite Provider](./docs/providers/sqlite.md)
+- [Remote API Provider](./docs/providers/remote.md)
+- [自訂 Provider](./docs/providers/custom.md)
 
 ## 核心概念
 
@@ -270,6 +252,40 @@ const config = {
 };
 ```
 
+## 日誌功能
+
+Data Gateway 提供完整的日誌功能，支援多種日誌級別和格式，幫助您監控和調試應用程式。
+
+### 基本設定
+
+```typescript
+import { LogLevel } from '@wfp99/data-gateway';
+
+const config = {
+	providers: { /* ... */ },
+	repositories: { /* ... */ },
+	logging: {
+		level: LogLevel.INFO,     // 設定日誌級別
+		format: 'pretty'          // 'pretty' 或 'json'
+	}
+};
+
+const gateway = await DataGateway.build(config);
+```
+
+### 日誌級別
+
+```typescript
+LogLevel.ALL    // 0  - 顯示所有日誌
+LogLevel.DEBUG  // 10 - 除錯信息
+LogLevel.INFO   // 20 - 一般信息（預設）
+LogLevel.WARN   // 30 - 警告訊息
+LogLevel.ERROR  // 40 - 錯誤訊息
+LogLevel.OFF    // 50 - 關閉日誌
+```
+
+詳細的日誌配置和範例請參考[日誌功能指南](./docs/guides/logging.md)。
+
 ## 自訂資料提供者範例
 
 ```typescript
@@ -284,11 +300,11 @@ class CustomProvider implements DataProvider {
 
 ## 支援的資料來源
 
-- MySQL (需要 `mysql2`)
-- PostgreSQL (需要 `pg` 和 `@types/pg`)
-- SQLite (需要 `@sqlite/sqlite3` 或 `sqlite3`)
-- 遠端 API (透過 `RemoteProvider`)
-- 自訂資料提供者
+- **MySQL** (需要 `mysql2`)
+- **PostgreSQL** (需要 `pg` 和 `@types/pg`)
+- **SQLite** (需要 `sqlite3`)
+- **遠端 API** (透過 `RemoteProvider`)
+- **自訂資料提供者** (實現 `DataProvider` 介面)
 
 ## 授權
 
