@@ -3,12 +3,15 @@ import { DataProvider } from './dataProvider';
 import { DefaultFieldMapper, EntityFieldMapper } from './entityFieldMapper';
 import { Middleware, runMiddlewares } from './middleware';
 import { Query, Condition, Aggregate } from './queryObject';
+import { getLogger } from './logger';
 
 /**
  * Generic Repository, provides methods to operate on specified type objects using DataProvider.
  */
 export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMapper<T>>
 {
+	private readonly logger = getLogger('Repository');
+
 	/**
 	 * @param provider Data provider
 	 * @param table Table name
@@ -19,7 +22,9 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		private readonly table: string,
 		private readonly mapper: M = new DefaultFieldMapper<T>() as M,
 		private readonly middlewares: Middleware[] = []
-	) { }
+	) {
+		this.logger.debug(`Repository initialized`, { table: this.table, middlewares: this.middlewares.length });
+	}
 
 	/**
 	 * Maps a query object from entity-centric fields and values to database-centric
@@ -123,17 +128,22 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	{
 		try
 		{
+			this.logger.debug(`Executing find query`, { table: this.table, query });
 			const dbQuery = this.mapQueryToDb({ ...query, type: 'SELECT', table: this.table });
 			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query<Record<string, any>>(q);
 			});
 
-			return Promise.all(rows?.map(row => this.mapper.fromDb(row)) ?? []);
+			const results = await Promise.all(rows?.map(row => this.mapper.fromDb(row)) ?? []);
+			this.logger.debug(`Find query completed`, { table: this.table, resultCount: results.length });
+			return results;
 		}
 		catch (err)
 		{
-			throw new Error(`[Repository.find] ${err instanceof Error ? err.message : String(err)}`);
+			const errorMsg = `[Repository.find] ${err instanceof Error ? err.message : String(err)}`;
+			this.logger.error(errorMsg, { table: this.table, query });
+			throw new Error(errorMsg);
 		}
 	}
 
@@ -242,6 +252,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	{
 		try
 		{
+			this.logger.debug(`Inserting entity`, { table: this.table });
 			const values = await this.mapper.toDb(entity);
 			const query: Query = {
 				type: 'INSERT',
@@ -253,11 +264,15 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			{
 				return this.provider.query(q);
 			});
-			return result.insertId ?? 0;
+			const insertId = result.insertId ?? 0;
+			this.logger.info(`Entity inserted successfully`, { table: this.table, insertId });
+			return insertId;
 		}
 		catch (err)
 		{
-			throw new Error(`[Repository.insert] ${err instanceof Error ? err.message : String(err)}`);
+			const errorMsg = `[Repository.insert] ${err instanceof Error ? err.message : String(err)}`;
+			this.logger.error(errorMsg, { table: this.table });
+			throw new Error(errorMsg);
 		}
 	}
 
