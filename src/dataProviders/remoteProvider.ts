@@ -1,5 +1,6 @@
 import { DataProvider, ConnectionPoolStatus } from "../dataProvider";
 import { Query, QueryResult } from "../queryObject";
+import { getLogger } from "../logger";
 
 export interface RemoteProviderOptions
 {
@@ -17,6 +18,8 @@ export class RemoteProvider implements DataProvider
 	private readonly endpoint: string;
 	/** The optional Bearer Token. */
 	private readonly bearerToken?: string;
+	/** Logger instance */
+	private readonly logger = getLogger('RemoteProvider');
 
 	/**
 	 * Constructs a RemoteProvider instance.
@@ -26,6 +29,7 @@ export class RemoteProvider implements DataProvider
 	{
 		this.endpoint = options.endpoint;
 		this.bearerToken = options.bearerToken;
+		this.logger.debug(`RemoteProvider initialized`, { endpoint: this.endpoint, hasToken: !!this.bearerToken });
 	}
 
 	/**
@@ -33,6 +37,7 @@ export class RemoteProvider implements DataProvider
 	 */
 	async connect(): Promise<void>
 	{
+		this.logger.debug(`Connecting to remote endpoint`, { endpoint: this.endpoint });
 		return;
 	}
 
@@ -41,6 +46,7 @@ export class RemoteProvider implements DataProvider
 	 */
 	async disconnect(): Promise<void>
 	{
+		this.logger.debug(`Disconnecting from remote endpoint`, { endpoint: this.endpoint });
 		return;
 	}
 
@@ -58,16 +64,35 @@ export class RemoteProvider implements DataProvider
 		{
 			headers['Authorization'] = `Bearer ${this.bearerToken}`;
 		}
+
+		this.logger.debug(`Sending POST request to remote endpoint`, {
+			endpoint: this.endpoint,
+			queryType: queryObject.type,
+			table: queryObject.table
+		});
+
 		const response = await fetch(this.endpoint, {
 			method: 'POST',
 			headers,
 			body: JSON.stringify(queryObject),
 		});
+
 		if (!response.ok)
 		{
-			throw new Error(`HTTP error! status: ${response.status}`);
+			const errorMsg = `HTTP error! status: ${response.status}`;
+			this.logger.error(errorMsg, { endpoint: this.endpoint, status: response.status });
+			throw new Error(errorMsg);
 		}
-		return await response.json() as QueryResult<T>;
+
+		const result = await response.json() as QueryResult<T>;
+		this.logger.debug(`Received response from remote endpoint`, {
+			endpoint: this.endpoint,
+			hasRows: !!result.rows,
+			rowCount: result.rows?.length,
+			hasError: !!result.error
+		});
+
+		return result;
 	}
 
 	/**
@@ -95,6 +120,8 @@ export class RemoteProvider implements DataProvider
 	 */
 	async query<T = any>(query: Query): Promise<QueryResult<T>>
 	{
+		this.logger.debug(`Executing query`, { type: query.type, table: query.table });
+
 		try
 		{
 			// The remote endpoint is expected to handle the query type and return a valid QueryResult.
@@ -104,19 +131,31 @@ export class RemoteProvider implements DataProvider
 				case 'INSERT':
 				case 'UPDATE':
 				case 'DELETE':
-					return await this.post<T>(query);
+					const result = await this.post<T>(query);
+					if (result.error) {
+						this.logger.warn(`Query executed with error`, { type: query.type, table: query.table, error: result.error });
+					} else {
+						this.logger.debug(`Query executed successfully`, { type: query.type, table: query.table });
+					}
+					return result;
 				default:
 					// Handle legacy RAW queries and unknown types
 					if ((query as any).type === 'RAW')
 					{
-						return { error: '[RemoteProvider.query] RAW queries are not supported for security reasons' };
+						const errorMsg = '[RemoteProvider.query] RAW queries are not supported for security reasons';
+						this.logger.error(errorMsg);
+						return { error: errorMsg };
 					}
-					return { error: '[RemoteProvider.query] Unknown query type: ' + (query as any).type };
+					const unknownTypeError = '[RemoteProvider.query] Unknown query type: ' + (query as any).type;
+					this.logger.error(unknownTypeError, { type: (query as any).type });
+					return { error: unknownTypeError };
 			}
 		}
 		catch (err)
 		{
-			return { error: `[RemoteProvider.query] ${err instanceof Error ? err.message : String(err)}` };
+			const errorMsg = `[RemoteProvider.query] ${err instanceof Error ? err.message : String(err)}`;
+			this.logger.error(errorMsg, { type: query.type, table: query.table });
+			return { error: errorMsg };
 		}
 	}
 }
