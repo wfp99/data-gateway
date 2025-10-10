@@ -381,13 +381,13 @@ export class MySQLProvider implements DataProvider
 		}
 		if (query.limit !== undefined && typeof query.limit === 'number' && query.limit > 0)
 		{
-			sql += ` LIMIT ?`;
-			params.push(query.limit);
+			// MySQL prepared statements require LIMIT to be embedded directly in SQL, not as parameter
+			sql += ` LIMIT ${query.limit}`;
 		}
 		if (query.offset !== undefined && typeof query.offset === 'number' && query.offset >= 0)
 		{
-			sql += ` OFFSET ?`;
-			params.push(query.offset);
+			// MySQL prepared statements require OFFSET to be embedded directly in SQL, not as parameter
+			sql += ` OFFSET ${query.offset}`;
 		}
 
 		this.logger.debug('SELECT SQL statement built successfully', { sql, paramCount: params.length });
