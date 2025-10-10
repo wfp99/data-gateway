@@ -9,6 +9,7 @@ import { RemoteProvider, RemoteProviderOptions } from './dataProviders/remotePro
 import { Middleware } from './middleware';
 import { EntityFieldMapper, DefaultFieldMapper, MappingFieldMapper } from './entityFieldMapper';
 import { Repository } from './repository';
+import { Logger, LogLevel, LoggerConfig, globalLogger, getLogger } from './logger';
 
 // Type-only imports for providers that require peer dependencies
 // This allows us to export the types without importing the actual implementations
@@ -23,7 +24,8 @@ export
 	RemoteProvider, RemoteProviderOptions,
 	Middleware,
 	EntityFieldMapper, DefaultFieldMapper, MappingFieldMapper,
-	Repository
+	Repository,
+	Logger, LogLevel, LoggerConfig, globalLogger, getLogger
 }
 
 // Defines the types for data provider configurations.
@@ -72,6 +74,11 @@ export interface DataGatewayConfig
 			middlewares?: Middleware[];
 		};
 	};
+
+	/**
+	 * Logging configuration options.
+	 */
+	logging?: LoggerConfig;
 }
 
 /**
@@ -134,7 +141,34 @@ export class DataGateway
 	 */
 	async disconnectAll(): Promise<void>
 	{
+		const logger = getLogger('DataGateway');
+		logger.info('Disconnecting all providers');
 		await Promise.all(Array.from(this.providers.values()).map(p => p.disconnect()));
+		logger.info('All providers disconnected');
+	}
+
+	/**
+	 * Configures the global logger for DataGateway.
+	 */
+	static configureLogger(config: LoggerConfig): void
+	{
+		globalLogger.configure(config);
+	}
+
+	/**
+	 * Gets the current logger configuration.
+	 */
+	static getLoggerLevel(): LogLevel
+	{
+		return globalLogger.getLevel();
+	}
+
+	/**
+	 * Sets the logger level.
+	 */
+	static setLoggerLevel(level: LogLevel): void
+	{
+		globalLogger.setLevel(level);
 	}
 
 	/**
@@ -143,6 +177,16 @@ export class DataGateway
 	static async build(config: DataGatewayConfig): Promise<DataGateway>
 	{
 		const gateway = new DataGateway();
+		const logger = getLogger('DataGateway');
+
+		// Configure logging if provided
+		if (config.logging)
+		{
+			globalLogger.configure(config.logging);
+			logger.info('Logger configured', { level: LogLevel[config.logging.level || LogLevel.INFO] });
+		}
+
+		logger.info('Building DataGateway instance');
 
 		try
 		{
@@ -150,6 +194,7 @@ export class DataGateway
 			const providerPromises = Object.entries(config.providers).map(async ([name, providerConfig]) =>
 			{
 				let provider: DataProvider;
+				logger.debug(`Initializing provider: ${name}`, { type: providerConfig.type });
 
 				switch (providerConfig.type)
 				{
@@ -158,10 +203,12 @@ export class DataGateway
 						{
 							const { MySQLProvider } = await import('./dataProviders/MySQLProvider.js');
 							provider = new MySQLProvider((providerConfig.options as MySQLProviderOptions));
+							logger.debug(`MySQL provider created for: ${name}`);
 						}
 						catch (err)
 						{
 							const error = err instanceof Error ? err : new Error(String(err));
+							logger.error(`Failed to create MySQL provider: ${name}`, { error: error.message });
 							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
 							{
 								throw new Error(`MySQL provider requires 'mysql2' package. Please install it: npm install mysql2`);
@@ -174,10 +221,12 @@ export class DataGateway
 						{
 							const { SQLiteProvider } = await import('./dataProviders/SQLiteProvider.js');
 							provider = new SQLiteProvider((providerConfig.options as SQLiteProviderOptions));
+							logger.debug(`SQLite provider created for: ${name}`);
 						}
 						catch (err)
 						{
 							const error = err instanceof Error ? err : new Error(String(err));
+							logger.error(`Failed to create SQLite provider: ${name}`, { error: error.message });
 							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
 							{
 								throw new Error(`SQLite provider requires 'sqlite' and 'sqlite3' packages. Please install them: npm install sqlite sqlite3`);
@@ -190,10 +239,12 @@ export class DataGateway
 						{
 							const { PostgreSQLProvider } = await import('./dataProviders/PostgreSQLProvider.js');
 							provider = new PostgreSQLProvider((providerConfig.options as PostgreSQLProviderOptions));
+							logger.debug(`PostgreSQL provider created for: ${name}`);
 						}
 						catch (err)
 						{
 							const error = err instanceof Error ? err : new Error(String(err));
+							logger.error(`Failed to create PostgreSQL provider: ${name}`, { error: error.message });
 							if (error.message.includes('Cannot resolve module') || error.message.includes('MODULE_NOT_FOUND'))
 							{
 								throw new Error(`PostgreSQL provider requires 'pg' package. Please install it: npm install pg @types/pg`);
@@ -203,37 +254,49 @@ export class DataGateway
 						break;
 					case 'remote':
 						provider = new RemoteProvider((providerConfig.options as RemoteProviderOptions));
+						logger.debug(`Remote provider created for: ${name}`);
 						break;
 					case 'custom':
 						provider = (providerConfig.options as CustomProviderOptions).provider;
+						logger.debug(`Custom provider created for: ${name}`);
 						break;
 					default:
 						// This error will be caught by the outer try-catch block
-						throw new Error(`Unknown provider type: '${providerConfig.type}'`);
+						const errorMsg = `Unknown provider type: '${providerConfig.type}'`;
+						logger.error(errorMsg, { providerName: name });
+						throw new Error(errorMsg);
 				}
 
 				try
 				{
+					logger.debug(`Connecting to provider: ${name}`);
 					await provider.connect();
 					// Only add the provider to the gateway if the connection is successful
 					gateway.providers.set(name, provider);
+					logger.info(`Provider connected successfully: ${name}`);
 				} catch (err)
 				{
 					const message = err instanceof Error ? err.message : String(err);
+					const errorMsg = `Connection failed for provider '${name}': ${message}`;
+					logger.error(errorMsg);
 					// Re-throw with more context about which provider failed
-					throw new Error(`Connection failed for provider '${name}': ${message}`);
+					throw new Error(errorMsg);
 				}
 			});
 
 			await Promise.all(providerPromises);
+			logger.info(`All providers initialized successfully`, { count: Object.keys(config.providers).length });
 
 			// Initialize all repositories
 			for (const [name, repoConfig] of Object.entries(config.repositories))
 			{
+				logger.debug(`Initializing repository: ${name}`, { provider: repoConfig.provider, table: repoConfig.table });
 				const provider = gateway.providers.get(repoConfig.provider);
 				if (!provider)
 				{
-					throw new Error(`Provider '${repoConfig.provider}' not found for repository '${name}'`);
+					const errorMsg = `Provider '${repoConfig.provider}' not found for repository '${name}'`;
+					logger.error(errorMsg);
+					throw new Error(errorMsg);
 				}
 				const repo = new Repository(
 					provider,
@@ -242,18 +305,25 @@ export class DataGateway
 					repoConfig.middlewares ?? []
 				);
 				gateway.repositories.set(name, repo);
+				logger.debug(`Repository initialized successfully: ${name}`);
 			}
+
+			logger.info(`All repositories initialized successfully`, { count: Object.keys(config.repositories).length });
 		}
 		catch (error)
 		{
 			// If any part of the build fails, disconnect all successfully connected providers to prevent dangling connections.
+			logger.error('Build failed, disconnecting all providers');
 			await gateway.disconnectAll();
 
 			// Re-throw the error with a clear prefix for better debugging.
 			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`[DataGateway] Build failed: ${message}`);
+			const errorMsg = `[DataGateway] Build failed: ${message}`;
+			logger.error(errorMsg);
+			throw new Error(errorMsg);
 		}
 
+		logger.info('DataGateway instance built successfully');
 		return gateway;
 	}
 }
