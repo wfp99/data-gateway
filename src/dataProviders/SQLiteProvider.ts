@@ -481,6 +481,58 @@ export class SQLiteProvider implements DataProvider
 	}
 
 	/**
+	 * Converts a value to a SQLite-compatible format.
+	 * Handles Date objects by converting them to ISO 8601 strings.
+	 * @param value The value to convert.
+	 * @returns The converted value.
+	 */
+	private convertValueToSQLite(value: any): any
+	{
+		if (value instanceof Date)
+		{
+			// Convert Date to ISO 8601 string format for SQLite
+			return value.toISOString();
+		}
+		return value;
+	}
+
+	/**
+	 * Converts a value from SQLite format to JavaScript types.
+	 * Attempts to detect and convert ISO 8601 date strings back to Date objects.
+	 * @param value The value from SQLite.
+	 * @returns The converted value.
+	 */
+	private convertValueFromSQLite(value: any): any
+	{
+		// If the value is a string that looks like an ISO 8601 date, convert it to Date
+		if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(value))
+		{
+			const date = new Date(value);
+			// Check if the conversion resulted in a valid date
+			if (!isNaN(date.getTime()))
+			{
+				return date;
+			}
+		}
+		return value;
+	}
+
+	/**
+	 * Converts all values in a row from SQLite format.
+	 * @param row The row from SQLite.
+	 * @returns The row with converted values.
+	 */
+	private convertRowFromSQLite(row: Record<string, any>): Record<string, any>
+	{
+		const converted: Record<string, any> = {};
+		for (const key in row)
+		{
+			converted[key] = this.convertValueFromSQLite(row[key]);
+		}
+		return converted;
+	}
+
+	/**
 	 * Builds the SQL statement and parameters for an INSERT query.
 	 * @param query The query object.
 	 * @returns An object containing the SQL string and parameters.
@@ -494,7 +546,7 @@ export class SQLiteProvider implements DataProvider
 		const safeKeys = keys.map(k => this.validateIdentifier(k));
 
 		const sql = `INSERT INTO "${safeTableName}" (${safeKeys.map(k => `"${k}"`).join(', ')}) VALUES (${keys.map(_ => '?').join(', ')})`;
-		const params = keys.map(k => query.values![k]);
+		const params = keys.map(k => this.convertValueToSQLite(query.values![k]));
 		return { sql, params };
 	}
 
@@ -512,7 +564,7 @@ export class SQLiteProvider implements DataProvider
 		const safeKeys = keys.map(k => this.validateIdentifier(k));
 
 		let sql = `UPDATE "${safeTableName}" SET ` + safeKeys.map(k => `"${k}" = ?`).join(', ');
-		const params = keys.map(k => query.values![k]);
+		const params = keys.map(k => this.convertValueToSQLite(query.values![k]));
 
 		if (query.where)
 		{
@@ -567,7 +619,7 @@ export class SQLiteProvider implements DataProvider
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			const safeFieldName = this.validateIdentifier(cond.field);
-			params.push(cond.value);
+			params.push(this.convertValueToSQLite(cond.value));
 			return `"${safeFieldName}" ${cond.op} ?`;
 		}
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
@@ -578,7 +630,7 @@ export class SQLiteProvider implements DataProvider
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			const safeFieldName = this.validateIdentifier(cond.field);
-			params.push(...cond.values);
+			params.push(...cond.values.map(v => this.convertValueToSQLite(v)));
 			return `"${safeFieldName}" ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 		}
 		else if ('and' in cond)
@@ -611,7 +663,9 @@ export class SQLiteProvider implements DataProvider
 	{
 		const db = this.getReadConnection();
 		const { sql, params } = this.buildSelectSQL(query);
-		return await db.all<T[]>(sql, params);
+		const rows = await db.all<T[]>(sql, params);
+		// Convert date strings back to Date objects
+		return rows.map(row => this.convertRowFromSQLite(row as any)) as T[];
 	}
 
 	/**
