@@ -69,14 +69,29 @@ export class MySQLProvider implements DataProvider
 	 */
 	constructor(options: MySQLProviderOptions)
 	{
-		this.options = options;
+		// Set default charset to utf8mb4 for full Unicode support (including emoji)
+		// Users can override this by explicitly setting charset in options
+		this.options = {
+			charset: 'utf8mb4',
+			...options,
+		};
 		this.usePool = options.pool?.usePool !== false; // Default to true
 		this.logger.debug('MySQLProvider initialized', {
 			host: options.host,
 			database: options.database,
 			usePool: this.usePool,
-			connectionLimit: options.pool?.connectionLimit || 10
+			connectionLimit: options.pool?.connectionLimit || 10,
+			charset: this.options.charset
 		});
+
+		// Warn if charset is not utf8mb4
+		if (this.options.charset && this.options.charset !== 'utf8mb4')
+		{
+			this.logger.warn('MySQL charset is not utf8mb4. Emoji and some Unicode characters may not be stored correctly.', {
+				charset: this.options.charset,
+				recommendation: 'Use charset: "utf8mb4" for full Unicode support'
+			});
+		}
 	}
 
 	/**
