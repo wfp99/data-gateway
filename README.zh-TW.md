@@ -5,7 +5,7 @@
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
 [![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
 
-一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源（MySQL、SQLite、遠端 API）、自訂資料提供者和 middleware。非常適合建構現代、資料驅動的應用程式。
+一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源（MySQL、PostgreSQL、SQLite、遠端 API）、自訂資料提供者和中介軟體。非常適合建構現代、資料驅動的應用程式。
 
 ## 功能特色
 
@@ -133,6 +133,9 @@ const config = {
 - [SQLite Provider](./docs/providers/sqlite.md)
 - [Remote API Provider](./docs/providers/remote.md)
 - [自訂 Provider](./docs/providers/custom.md)
+
+### 其他指南
+- [Date 物件處理](./docs/guides/date-handling.md) - Date 與資料庫的自動轉換
 
 ## 核心概念
 
@@ -285,6 +288,8 @@ LogLevel.OFF    // 50 - 關閉日誌
 ```
 
 詳細的日誌配置和範例請參考[日誌功能指南](./docs/guides/logging.md)。
+
+
 
 ## 自訂資料提供者範例
 

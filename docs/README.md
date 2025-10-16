@@ -10,6 +10,8 @@ Data Gateway 是一個輕量級、可擴展的 Node.js 資料存取閘道，支�
 - [安裝與設定](./guides/installation.md)
 - [快速入門指南](./guides/quick-start.md)
 - [基本使用方法](./guides/basic-usage.md)
+- [日誌功能指南](./guides/logging.md)
+- [Date 物件處理](./guides/date-handling.md)
 
 ### 🏗️ 核心概念
 - [架構設計](./core/architecture.md)

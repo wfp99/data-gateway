@@ -24,7 +24,7 @@ const config = {
   // Configure logging
   logging: {
     level: LogLevel.INFO,     // Set log level
-    console: true            // Output to console (default: true)
+    format: 'pretty'          // Format: 'pretty' or 'json'
   },
 
   providers: {
@@ -47,7 +47,7 @@ import { DataGateway, LogLevel } from '@wfp99/data-gateway';
 // Configure global logger directly
 DataGateway.configureLogger({
   level: LogLevel.WARN,
-  console: true
+  format: 'pretty'
 });
 
 // Or just set the log level
@@ -73,45 +73,17 @@ logger.warn('Warning: Config file missing', { configPath: '/path/to/config' });
 logger.error('Error: Database connection failed', { error: 'Connection timeout' });
 ```
 
-### 4. Custom Log Formatter
+### 4. Custom Log Format
 
 ```typescript
 import { Logger, LogLevel } from '@wfp99/data-gateway';
 
 const customLogger = new Logger({
   level: LogLevel.INFO,
-  console: true,
-
-  // Custom formatter function
-  formatter: (entry) => {
-    const time = entry.timestamp.toLocaleTimeString();
-    const level = LogLevel[entry.level];
-    const context = entry.context ? `[${entry.context}] ` : '';
-    return `${time} ${level}: ${context}${entry.message}`;
-  }
+  format: 'json'  // Use JSON format
 });
 
-customLogger.info('Custom formatted log message', 'CustomContext');
-```
-
-### 5. Custom Log Handler
-
-```typescript
-import { Logger, LogLevel } from '@wfp99/data-gateway';
-import fs from 'fs';
-
-const fileLogger = new Logger({
-  level: LogLevel.INFO,
-  console: false,  // Don't output to console
-
-  // Custom handler, e.g., write to file
-  handler: (entry) => {
-    const logMessage = `${entry.timestamp.toISOString()} [${LogLevel[entry.level]}] ${entry.message}`;
-
-    // You can implement file writing, sending to remote logging service, etc.
-    fs.appendFileSync('app.log', logMessage + '\n');
-  }
-});
+customLogger.info('JSON formatted log message');
 ```
 
 ## Practical Examples
@@ -147,15 +119,7 @@ const gateway = await DataGateway.build(devConfig);
 const prodConfig = {
   logging: {
     level: LogLevel.ERROR,
-    console: true,
-
-    // In production, you might use a custom handler to send to monitoring service
-    handler: (entry) => {
-      if (entry.level >= LogLevel.ERROR) {
-        // Send to error monitoring service
-        sendToErrorMonitoring(entry);
-      }
-    }
+    format: 'json'  // Use JSON format in production for log analysis
   },
   providers: {
     // ... production configuration
@@ -208,47 +172,4 @@ setLogLevel(process.env.LOG_LEVEL || 'info');
 
 4. **Context Information**: Create loggers with appropriate context for each module or feature.
 
-5. **Log Rotation**: When using custom handlers in production, remember to implement log rotation to prevent log files from becoming too large.
-
-## API Reference
-
-### Logger Class
-
-```typescript
-class Logger {
-  constructor(config?: LoggerConfig)
-  configure(config: Partial<LoggerConfig>): void
-  getLevel(): LogLevel
-  setLevel(level: LogLevel): void
-  debug(message: string, context?: string, data?: any): void
-  info(message: string, context?: string, data?: any): void
-  warn(message: string, context?: string, data?: any): void
-  error(message: string, context?: string, data?: any): void
-}
-```
-
-### LoggerConfig Interface
-
-```typescript
-interface LoggerConfig {
-  level?: LogLevel;
-  console?: boolean;
-  formatter?: (entry: LogEntry) => string;
-  handler?: (entry: LogEntry) => void;
-}
-```
-
-### Global Functions
-
-```typescript
-// Get a logger with optional context
-function getLogger(context?: string): ContextLogger
-
-// Global logger instance
-const globalLogger: Logger
-
-// DataGateway static methods
-DataGateway.configureLogger(config: LoggerConfig): void
-DataGateway.getLoggerLevel(): LogLevel
-DataGateway.setLoggerLevel(level: LogLevel): void
-```
+5. **Log Rotation**: If you need to write logs to files, consider using external log management tools for log rotation to prevent log files from becoming too large.

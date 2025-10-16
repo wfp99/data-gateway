@@ -137,6 +137,148 @@ interface MySQLProviderOptions extends ConnectionOptions {
 }
 ```
 
+## Character Set and Encoding Configuration
+
+### UTF8MB4 Character Set (Highly Recommended)
+
+**Important:** MySQL Provider uses `utf8mb4` character set by default, which is essential for full Unicode character support (including emoji, rare Chinese characters, etc.).
+
+#### Why UTF8MB4?
+
+MySQL's `utf8` character set only supports 3-byte UTF-8 characters and cannot properly store:
+- Emoji characters: 😀, 🎉, ❤️
+- Some rare Chinese characters: 𠮷, 𨋢
+- Certain symbols: 𝕏, 🇹🇼
+
+`utf8mb4` supports full 4-byte UTF-8 encoding and can correctly handle all Unicode characters.
+
+#### Application Level Configuration
+
+```typescript
+const gateway = await DataGateway.build({
+  providers: {
+    mysql: {
+      type: 'mysql',
+      options: {
+        host: 'localhost',
+        user: 'app_user',
+        password: 'password',
+        database: 'mydb',
+        charset: 'utf8mb4',  // Default value, supports full Unicode
+      },
+    },
+  },
+  repositories: {
+    users: { provider: 'mysql', table: 'users' },
+  },
+});
+```
+
+#### Database Level Configuration
+
+In addition to application configuration, ensure your MySQL database and tables use the correct character set:
+
+```sql
+-- 1. Create database with character set
+CREATE DATABASE mydb
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- 2. Modify existing database character set
+ALTER DATABASE mydb
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- 3. Create table with character set
+CREATE TABLE users (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  bio TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4. Modify existing table character set
+ALTER TABLE users
+  CONVERT TO CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+#### Verify Character Set Configuration
+
+```sql
+-- Check database character set
+SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA
+WHERE SCHEMA_NAME = 'mydb';
+
+-- Check table character set
+SHOW CREATE TABLE users;
+
+-- Check column character set
+SELECT COLUMN_NAME, CHARACTER_SET_NAME, COLLATION_NAME
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'users';
+```
+
+#### Testing UTF8MB4 Support
+
+```typescript
+// Test inserting data with emoji and multi-language characters
+const userRepo = gateway.getRepository('users');
+
+await userRepo.insert({
+  name: 'John Smith',
+  bio: 'Software engineer 👨‍💻, loves traveling 🌍',
+  status: 'Active ✨'
+});
+
+// Read data and verify
+const user = await userRepo.findOne({
+  field: 'name',
+  op: '=',
+  value: 'John Smith'
+});
+
+console.log(user.bio); // Should display correctly: Software engineer 👨‍💻, loves traveling 🌍
+```
+
+#### Common Questions
+
+**Q: Why do my emoji show as `????`?**
+
+A: This is usually because:
+1. Database or table does not use `utf8mb4` character set
+2. Connection does not specify `charset: 'utf8mb4'`
+3. VARCHAR field length is insufficient (utf8mb4 uses up to 4 bytes per character)
+
+**Q: How to calculate VARCHAR field length?**
+
+A: In `utf8mb4`, VARCHAR(100) means up to 100 characters, but:
+- Each ASCII character uses 1 byte
+- Each Chinese character uses 3 bytes
+- Each emoji uses 4 bytes
+
+If you need to store 100 Chinese characters, ensure the table definition allows sufficient bytes.
+
+**Q: How to migrate existing projects to utf8mb4?**
+
+A: Recommended steps:
+1. Backup existing data
+2. Modify database character set
+3. Modify table character set (using `ALTER TABLE ... CONVERT TO`)
+4. Update application connection settings
+5. Test data integrity
+
+#### Character Set Warnings
+
+If you explicitly specify a character set other than `utf8mb4`, the Provider will log a warning message:
+
+```
+[WARN] MySQL charset is not utf8mb4. Emoji and some Unicode characters may not be stored correctly.
+```
+
+We recommend always using `utf8mb4` to ensure full Unicode support.
+
 ## Query Features
 
 ### Basic CRUD Operations

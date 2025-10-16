@@ -137,6 +137,148 @@ interface MySQLProviderOptions extends ConnectionOptions {
 }
 ```
 
+## 字符集與編碼設定
+
+### UTF8MB4 字符集（強烈建議）
+
+**重要：** MySQL Provider 預設使用 `utf8mb4` 字符集，這是支援完整 Unicode 字符（包括 emoji、稀有漢字等）的必要設定。
+
+#### 為什麼需要 UTF8MB4？
+
+MySQL 的 `utf8` 字符集只支援 3 字節的 UTF-8 字符，無法正確儲存：
+- Emoji 表情符號：😀、🎉、❤️
+- 某些稀有漢字：𠮷、𨋢
+- 部分符號：𝕏、🇹🇼
+
+而 `utf8mb4` 支援完整的 4 字節 UTF-8 編碼，可以正確處理所有 Unicode 字符。
+
+#### 應用程式層級配置
+
+```typescript
+const gateway = await DataGateway.build({
+  providers: {
+    mysql: {
+      type: 'mysql',
+      options: {
+        host: 'localhost',
+        user: 'app_user',
+        password: 'password',
+        database: 'mydb',
+        charset: 'utf8mb4',  // 預設值，支援完整 Unicode
+      },
+    },
+  },
+  repositories: {
+    users: { provider: 'mysql', table: 'users' },
+  },
+});
+```
+
+#### 資料庫層級配置
+
+除了應用程式配置外，還需要確保 MySQL 資料庫和資料表使用正確的字符集：
+
+```sql
+-- 1. 建立資料庫時指定字符集
+CREATE DATABASE mydb
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- 2. 修改現有資料庫字符集
+ALTER DATABASE mydb
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- 3. 建立資料表時指定字符集
+CREATE TABLE users (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  bio TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4. 修改現有資料表字符集
+ALTER TABLE users
+  CONVERT TO CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+#### 驗證字符集配置
+
+```sql
+-- 檢查資料庫字符集
+SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA
+WHERE SCHEMA_NAME = 'mydb';
+
+-- 檢查資料表字符集
+SHOW CREATE TABLE users;
+
+-- 檢查欄位字符集
+SELECT COLUMN_NAME, CHARACTER_SET_NAME, COLLATION_NAME
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'users';
+```
+
+#### 測試 UTF8MB4 支援
+
+```typescript
+// 測試寫入包含 emoji 和多語言字符的資料
+const userRepo = gateway.getRepository('users');
+
+await userRepo.insert({
+  name: '張三',
+  bio: '我是一名工程師 👨‍💻，喜歡旅遊 🌍',
+  status: '活躍中 ✨'
+});
+
+// 讀取資料並驗證
+const user = await userRepo.findOne({
+  field: 'name',
+  op: '=',
+  value: '張三'
+});
+
+console.log(user.bio); // 應該正確顯示：我是一名工程師 👨‍💻，喜歡旅遊 🌍
+```
+
+#### 常見問題
+
+**Q: 為什麼我的 emoji 顯示為 `????`？**
+
+A: 這通常是因為：
+1. 資料庫或資料表未使用 `utf8mb4` 字符集
+2. 連線時未指定 `charset: 'utf8mb4'`
+3. VARCHAR 欄位長度不足（utf8mb4 每字符最多 4 字節）
+
+**Q: VARCHAR 欄位長度如何計算？**
+
+A: 在 `utf8mb4` 中，VARCHAR(100) 表示最多 100 個字符，但：
+- 每個 ASCII 字符佔 1 字節
+- 每個中文字符佔 3 字節
+- 每個 emoji 佔 4 字節
+
+如果需要儲存 100 個中文字符，需要確保資料表定義允許足夠的字節數。
+
+**Q: 如何在舊專案中遷移到 utf8mb4？**
+
+A: 建議步驟：
+1. 備份現有資料
+2. 修改資料庫字符集
+3. 修改資料表字符集（使用 `ALTER TABLE ... CONVERT TO`）
+4. 更新應用程式連線設定
+5. 測試資料完整性
+
+#### 字符集相關警告
+
+如果您明確指定了非 `utf8mb4` 的字符集，Provider 會在日誌中記錄警告訊息：
+
+```
+[WARN] MySQL charset is not utf8mb4. Emoji and some Unicode characters may not be stored correctly.
+```
+
+建議始終使用 `utf8mb4` 以確保完整的 Unicode 支援。
+
 ## 查詢功能
 
 ### 基本 CRUD 操作

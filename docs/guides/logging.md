@@ -24,7 +24,7 @@ const config = {
   // 配置日誌
   logging: {
     level: LogLevel.INFO,     // 設定日誌級別
-    console: true            // 是否輸出到控制台（預設：true）
+    format: 'pretty'          // 格式：'pretty' 或 'json'
   },
 
   providers: {
@@ -47,7 +47,7 @@ import { DataGateway, LogLevel } from '@wfp99/data-gateway';
 // 直接配置全域日誌
 DataGateway.configureLogger({
   level: LogLevel.WARN,
-  console: true
+  format: 'pretty'
 });
 
 // 或者只設定日誌級別
@@ -80,37 +80,10 @@ import { Logger, LogLevel } from '@wfp99/data-gateway';
 
 const customLogger = new Logger({
   level: LogLevel.INFO,
-  console: true,
-
-  // 自訂格式化函數
-  formatter: (entry) => {
-    const time = entry.timestamp.toLocaleTimeString();
-    const level = LogLevel[entry.level];
-    const context = entry.context ? `[${entry.context}] ` : '';
-    return `${time} ${level}: ${context}${entry.message}`;
-  }
+  format: 'json'  // 使用 JSON 格式
 });
 
-customLogger.info('自訂格式的日誌訊息', 'CustomContext');
-```
-
-### 5. 自訂日誌處理器
-
-```typescript
-import { Logger, LogLevel } from '@wfp99/data-gateway';
-
-const fileLogger = new Logger({
-  level: LogLevel.INFO,
-  console: false,  // 不輸出到控制台
-
-  // 自訂處理器，例如寫入檔案
-  handler: (entry) => {
-    const logMessage = `${entry.timestamp.toISOString()} [${LogLevel[entry.level]}] ${entry.message}`;
-
-    // 這裡可以實作寫入檔案、發送到遠端日誌服務等
-    fs.appendFileSync('app.log', logMessage + '\n');
-  }
-});
+customLogger.info('JSON 格式的日誌訊息');
 ```
 
 ## 實際範例
@@ -146,15 +119,7 @@ const gateway = await DataGateway.build(devConfig);
 const prodConfig = {
   logging: {
     level: LogLevel.ERROR,
-    console: true,
-
-    // 生產環境可能會使用自訂處理器發送到日誌監控服務
-    handler: (entry) => {
-      if (entry.level >= LogLevel.ERROR) {
-        // 發送到錯誤監控服務
-        sendToErrorMonitoring(entry);
-      }
-    }
+    format: 'json'  // 生產環境使用 JSON 格式便於日誌分析
   },
   providers: {
     // ... 生產環境配置
@@ -207,4 +172,4 @@ setLogLevel(process.env.LOG_LEVEL || 'info');
 
 4. **上下文資訊**：建議為每個模組或功能建立具有適當上下文的日誌記錄器。
 
-5. **日誌輪替**：在生產環境中使用自訂處理器時，記得實作日誌輪替以避免日誌檔案過大。
+5. **日誌輪替**：如果需要將日誌寫入檔案，建議使用外部日誌管理工具進行日誌輪替以避免日誌檔案過大。

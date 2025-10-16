@@ -5,7 +5,7 @@
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
 [![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
 
-A lightweight, extensible data access gateway for Node.js, supporting multiple data sources (MySQL, PostgreSQL, SQLite, remote API), custom providers, and middleware. Ideal for building modern, data-driven applications.
+A lightweight, extensible data access gateway for Node.js, supporting multiple data sources (MySQL, PostgreSQL, SQLite, Remote API), custom providers, and middleware. Ideal for building modern, data-driven applications.
 
 ## Features
 
@@ -133,6 +133,9 @@ For more detailed information, please see the [documentation](./docs/README.en.m
 - [SQLite Provider](./docs/providers/sqlite.en.md)
 - [Remote API Provider](./docs/providers/remote.en.md)
 - [Custom Providers](./docs/providers/custom.en.md)
+
+### Additional Guides
+- [Date Object Handling](./docs/guides/date-handling.en.md) - Automatic Date conversion with databases
 
 ## Core Concepts
 

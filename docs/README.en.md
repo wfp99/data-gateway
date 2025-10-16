@@ -10,11 +10,13 @@ Data Gateway is a lightweight, extensible data access gateway for Node.js, suppo
 - [Installation & Setup](./guides/installation.en.md)
 - [Quick Start Guide](./guides/quick-start.en.md)
 - [Basic Usage](./guides/basic-usage.en.md)
+- [Logging Guide](./guides/logging.en.md)
+- [Date Object Handling](./guides/date-handling.en.md)
 
 ### 🏗️ Core Concepts
 - [Architecture Design](./core/architecture.en.md)
 
-#### Providers
+### 📊 Data Provider Guides
 - [MySQL Provider](./providers/mysql.en.md)
 - [PostgreSQL Provider](./providers/postgresql.en.md)
 - [SQLite Provider](./providers/sqlite.en.md)
