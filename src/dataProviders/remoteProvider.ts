@@ -33,6 +33,91 @@ export class RemoteProvider implements DataProvider
 	}
 
 	/**
+	 * Custom JSON serializer that handles Date objects.
+	 * @param key The object key.
+	 * @param value The value to serialize.
+	 * @returns The serialized value.
+	 */
+	private jsonReplacer(key: string, value: any): any
+	{
+		if (value instanceof Date)
+		{
+			// Mark Date objects with a special type indicator
+			return { __type: 'Date', __value: value.toISOString() };
+		}
+		return value;
+	}
+
+	/**
+	 * Custom JSON deserializer that restores Date objects.
+	 * @param key The object key.
+	 * @param value The value to deserialize.
+	 * @returns The deserialized value.
+	 */
+	private jsonReviver(key: string, value: any): any
+	{
+		if (value && typeof value === 'object' && value.__type === 'Date')
+		{
+			return new Date(value.__value);
+		}
+		return value;
+	}
+
+	/**
+	 * Recursively converts Date objects in query parameters.
+	 * @param obj The object to process.
+	 * @returns The processed object.
+	 */
+	private prepareQueryForTransport(obj: any): any
+	{
+		if (obj instanceof Date)
+		{
+			return { __type: 'Date', __value: obj.toISOString() };
+		}
+		if (Array.isArray(obj))
+		{
+			return obj.map(item => this.prepareQueryForTransport(item));
+		}
+		if (obj && typeof obj === 'object')
+		{
+			const result: any = {};
+			for (const key in obj)
+			{
+				result[key] = this.prepareQueryForTransport(obj[key]);
+			}
+			return result;
+		}
+		return obj;
+	}
+
+	/**
+	 * Recursively restores Date objects from the response.
+	 * @param obj The object to process.
+	 * @returns The processed object.
+	 */
+	private restoreFromTransport(obj: any): any
+	{
+		if (obj && typeof obj === 'object' && obj.__type === 'Date')
+		{
+			return new Date(obj.__value);
+		}
+		if (Array.isArray(obj))
+		{
+			return obj.map(item => this.restoreFromTransport(item));
+		}
+		if (obj && typeof obj === 'object')
+		{
+			const result: any = {};
+			for (const key in obj)
+			{
+				result[key] = this.restoreFromTransport(obj[key]);
+			}
+			return result;
+		}
+		return obj;
+	}
+
+	/**
 	 * Connects to the data source. (No-op for a remote API, for interface compatibility).
 	 */
 	async connect(): Promise<void>
@@ -71,10 +156,13 @@ export class RemoteProvider implements DataProvider
 			table: queryObject.table
 		});
 
+		// Prepare query object with Date handling
+		const preparedQuery = this.prepareQueryForTransport(queryObject);
+
 		const response = await fetch(this.endpoint, {
 			method: 'POST',
 			headers,
-			body: JSON.stringify(queryObject),
+			body: JSON.stringify(preparedQuery),
 		});
 
 		if (!response.ok)
@@ -84,7 +172,11 @@ export class RemoteProvider implements DataProvider
 			throw new Error(errorMsg);
 		}
 
-		const result = await response.json() as QueryResult<T>;
+		const rawResult = await response.json() as QueryResult<T>;
+
+		// Restore Date objects from the response
+		const result = this.restoreFromTransport(rawResult) as QueryResult<T>;
+
 		this.logger.debug(`Received response from remote endpoint`, {
 			endpoint: this.endpoint,
 			hasRows: !!result.rows,
