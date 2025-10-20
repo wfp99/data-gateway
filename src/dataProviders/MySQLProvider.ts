@@ -265,6 +265,20 @@ export class MySQLProvider implements DataProvider
 	}
 
 	/**
+	 * Escapes a database identifier with backticks, handling table.field format.
+	 * @param identifier The identifier to escape (e.g., "users.id" or "id").
+	 * @returns The escaped identifier (e.g., "`users`.`id`" or "`id`").
+	 */
+	private escapeIdentifier(identifier: string): string
+	{
+		// Split by dot to handle table.field format
+		const parts = identifier.split('.');
+
+		// Escape each part separately
+		return parts.map(part => `\`${part}\``).join('.');
+	}
+
+	/**
 	 * Validates an SQL alias.
 	 * @param alias The alias to validate.
 	 * @returns The validated alias.
@@ -355,13 +369,13 @@ export class MySQLProvider implements DataProvider
 					}
 					const fieldName = this.validateIdentifier(fieldRefToString(f.field));
 					const alias = f.alias ? this.validateAlias(f.alias) : '';
-					return `${f.type}(\`${fieldName}\`)${alias ? ' AS `' + alias + '`' : ''}`;
+					return `${f.type}(${this.escapeIdentifier(fieldName)})${alias ? ' AS `' + alias + '`' : ''}`;
 				}
 				else
 				{
 					// It's a FieldReference (string or object format)
 					const fieldName = this.validateIdentifier(fieldRefToString(f as FieldReference));
-					return `\`${fieldName}\``;
+					return this.escapeIdentifier(fieldName);
 				}
 			}).join(', ');
 			sql += fields;
@@ -394,7 +408,7 @@ export class MySQLProvider implements DataProvider
 		if (query.groupBy && query.groupBy.length > 0)
 		{
 			const validatedGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
-			sql += ' GROUP BY ' + validatedGroupBy.map(f => `\`${f}\``).join(', ');
+			sql += ' GROUP BY ' + validatedGroupBy.map(f => this.escapeIdentifier(f)).join(', ');
 		}
 		if (query.orderBy && query.orderBy.length > 0)
 		{
@@ -402,7 +416,7 @@ export class MySQLProvider implements DataProvider
 			{
 				const fieldName = this.validateIdentifier(fieldRefToString(o.field));
 				const direction = this.validateDirection(o.direction);
-				return `\`${fieldName}\` ${direction}`;
+				return `${this.escapeIdentifier(fieldName)} ${direction}`;
 			}).join(', ');
 		}
 		if (query.limit !== undefined && typeof query.limit === 'number' && query.limit > 0)
@@ -519,7 +533,7 @@ export class MySQLProvider implements DataProvider
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
 			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
-			const result = `\`${fieldName}\` ${cond.op} (${sql})`;
+			const result = `${this.escapeIdentifier(fieldName)} ${cond.op} (${sql})`;
 			this.logger.debug('Subquery condition converted to SQL', { result });
 			return result;
 		}
@@ -536,7 +550,7 @@ export class MySQLProvider implements DataProvider
 			// Validate field name
 			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(cond.value);
-			const result = `\`${fieldName}\` ${cond.op} ?`;
+			const result = `${this.escapeIdentifier(fieldName)} ${cond.op} ?`;
 			this.logger.debug('Field comparison condition converted to SQL', { result });
 			return result;
 		}
@@ -551,7 +565,7 @@ export class MySQLProvider implements DataProvider
 			}
 			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values);
-			const result = `\`${fieldName}\` ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			const result = `${this.escapeIdentifier(fieldName)} ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 			this.logger.debug('IN/NOT IN condition converted to SQL', { result, valueCount: cond.values.length });
 			return result;
 		}
@@ -585,7 +599,7 @@ export class MySQLProvider implements DataProvider
 			this.logger.debug('Processing LIKE condition', { field: cond.like.field, pattern: cond.like.pattern });
 			const fieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
-			const result = `\`${fieldName}\` LIKE ?`;
+			const result = `${this.escapeIdentifier(fieldName)} LIKE ?`;
 			this.logger.debug('LIKE condition converted to SQL', { result });
 			return result;
 		}
