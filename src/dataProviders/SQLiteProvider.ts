@@ -1,5 +1,5 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
-import { Condition, Query, QueryResult } from '../queryObject';
+import { Condition, Query, QueryResult, fieldRefToString, FieldReference, Aggregate } from '../queryObject';
 import { getLogger } from '../logger';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
@@ -171,16 +171,22 @@ export class SQLiteProvider implements DataProvider
 					{
 						this.validateIdentifier(field);
 					}
-				} else if (typeof field === 'object' && field.type)
+				} else if (typeof field === 'object')
 				{
-					this.validateIdentifier(field.type);
-					if (field.field)
+					// Check if this is an Aggregate
+					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+					if ('type' in field && typeof field.type === 'string' && validAggregates.includes(field.type))
 					{
-						this.validateIdentifier(field.field);
-					}
-					if (field.alias)
-					{
-						this.validateAlias(field.alias);
+						const agg = field as Aggregate;
+						this.validateIdentifier(agg.type);
+						if (agg.field)
+						{
+							this.validateIdentifier(fieldRefToString(agg.field));
+						}
+						if (agg.alias)
+						{
+							this.validateAlias(agg.alias);
+						}
 					}
 				}
 			}
@@ -197,7 +203,7 @@ export class SQLiteProvider implements DataProvider
 		{
 			for (const order of query.orderBy)
 			{
-				this.validateIdentifier(order.field);
+				this.validateIdentifier(fieldRefToString(order.field));
 				if (order.direction)
 				{
 					this.validateDirection(order.direction);
@@ -433,10 +439,18 @@ export class SQLiteProvider implements DataProvider
 					return `"${safeFieldName}"`;
 				} else
 				{
-					const safeType = this.validateIdentifier(f.type);
-					const safeFieldName = this.validateIdentifier(f.field);
-					const safeAlias = f.alias ? this.validateAlias(f.alias) : '';
-					return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+					// Check if this is an Aggregate
+					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+					if ('type' in f && typeof f.type === 'string' && validAggregates.includes(f.type))
+					{
+						const agg = f as Aggregate;
+						const safeType = this.validateIdentifier(agg.type);
+						const safeFieldName = this.validateIdentifier(fieldRefToString(agg.field));
+						const safeAlias = agg.alias ? this.validateAlias(agg.alias) : '';
+						return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+					}
+					// This shouldn't happen but provide a fallback
+					return '*';
 				}
 			}).join(', ');
 		}
@@ -471,7 +485,7 @@ export class SQLiteProvider implements DataProvider
 
 		if (query.groupBy && query.groupBy.length > 0)
 		{
-			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(f));
+			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
 			sql += ' GROUP BY ' + safeGroupBy.map(f => `"${f}"`).join(', ');
 		}
 
@@ -479,7 +493,7 @@ export class SQLiteProvider implements DataProvider
 		{
 			sql += ' ORDER BY ' + query.orderBy.map(o =>
 			{
-				const safeField = this.validateIdentifier(o.field);
+				const safeField = this.validateIdentifier(fieldRefToString(o.field));
 				const safeDirection = this.validateDirection(o.direction);
 				return `"${safeField}" ${safeDirection}`;
 			}).join(', ');
@@ -624,7 +638,7 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(cond.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
 			return `"${safeFieldName}" ${cond.op} (${sql})`;
@@ -636,7 +650,7 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(cond.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(this.convertValueToSQLite(cond.value));
 			return `"${safeFieldName}" ${cond.op} ?`;
 		}
@@ -647,7 +661,7 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(cond.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values.map(v => this.convertValueToSQLite(v)));
 			return `"${safeFieldName}" ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 		}
@@ -665,7 +679,7 @@ export class SQLiteProvider implements DataProvider
 		}
 		else if ('like' in cond)
 		{
-			const safeFieldName = this.validateIdentifier(cond.like.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
 			return `"${safeFieldName}" LIKE ?`;
 		}
