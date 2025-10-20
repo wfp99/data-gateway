@@ -80,7 +80,7 @@ export class PostgreSQLProvider implements DataProvider
 
 	/**
 	 * Validate SQL identifiers (table names, field names, etc.)
-	 * Only allows letters, numbers, underscores, and must start with a letter
+	 * Only allows letters, numbers, underscores, and dots (for table.field format)
 	 */
 	private validateIdentifier(identifier: string): string
 	{
@@ -91,9 +91,9 @@ export class PostgreSQLProvider implements DataProvider
 			this.logger.error('Invalid identifier: empty or non-string', { identifier });
 			throw new Error('Invalid identifier: empty or non-string');
 		}
-		// Allow letters at the beginning, followed by letters, numbers, underscores
-		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-		if (!pattern.test(identifier) || identifier.length > 64)
+		// Allow letters at the beginning, followed by letters, numbers, underscores, and dots (for table.field)
+		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)?$/;
+		if (!pattern.test(identifier) || identifier.length > 128)
 		{
 			this.logger.error('Invalid PostgreSQL identifier detected', { identifier, reason: 'Contains invalid characters or too long' });
 			throw new Error(`Invalid identifier: ${identifier}`);
@@ -101,6 +101,20 @@ export class PostgreSQLProvider implements DataProvider
 
 		this.logger.debug('PostgreSQL identifier validated successfully', { identifier });
 		return identifier;
+	}
+
+	/**
+	 * Escapes a database identifier with double quotes, handling table.field format.
+	 * @param identifier The identifier to escape (e.g., "users.id" or "id").
+	 * @returns The escaped identifier (e.g., "\"users\".\"id\"" or "\"id\"").
+	 */
+	private escapeIdentifier(identifier: string): string
+	{
+		// Split by dot to handle table.field format
+		const parts = identifier.split('.');
+
+		// Escape each part separately with double quotes
+		return parts.map(part => `"${part}"`).join('.');
 	}
 
 	/**
@@ -473,7 +487,7 @@ export class PostgreSQLProvider implements DataProvider
 						const safeType = this.validateIdentifier(aggregate.type);
 						const safeFieldName = this.validateIdentifier(fieldRefToString(aggregate.field));
 						const safeAlias = aggregate.alias ? this.validateAlias(aggregate.alias) : '';
-						return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+						return `${safeType}(${this.escapeIdentifier(safeFieldName)})${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
 					}
 					else
 					{
@@ -481,7 +495,7 @@ export class PostgreSQLProvider implements DataProvider
 						const fieldRefStr = fieldRefToString(f as FieldReference);
 						if (fieldRefStr === '*') return '*';
 						const safeFieldName = this.validateIdentifier(fieldRefStr);
-						return `"${safeFieldName}"`;
+						return this.escapeIdentifier(safeFieldName);
 					}
 				}
 				else
@@ -490,7 +504,7 @@ export class PostgreSQLProvider implements DataProvider
 					const fieldRefStr = fieldRefToString(f as FieldReference);
 					if (fieldRefStr === '*') return '*';
 					const safeFieldName = this.validateIdentifier(fieldRefStr);
-					return `"${safeFieldName}"`;
+					return this.escapeIdentifier(safeFieldName);
 				}
 			}).join(', ');
 		} else
@@ -529,7 +543,7 @@ export class PostgreSQLProvider implements DataProvider
 		if (query.groupBy && query.groupBy.length > 0)
 		{
 			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
-			sql += ' GROUP BY ' + safeGroupBy.map(f => `"${f}"`).join(', ');
+			sql += ' GROUP BY ' + safeGroupBy.map(f => this.escapeIdentifier(f)).join(', ');
 		}
 
 		if (query.orderBy && query.orderBy.length > 0)
@@ -538,7 +552,7 @@ export class PostgreSQLProvider implements DataProvider
 			{
 				const safeField = this.validateIdentifier(fieldRefToString(o.field));
 				const safeDirection = this.validateDirection(o.direction);
-				return `"${safeField}" ${safeDirection}`;
+				return `${this.escapeIdentifier(safeField)} ${safeDirection}`;
 			}).join(', ');
 		}
 
@@ -646,7 +660,7 @@ export class PostgreSQLProvider implements DataProvider
 			const reindexedSql = this.reindexParameters(sql, paramIndex, subParams.length);
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			return {
-				conditionSql: `"${safeFieldName}" ${cond.op} (${reindexedSql})`,
+				conditionSql: `${this.escapeIdentifier(safeFieldName)} ${cond.op} (${reindexedSql})`,
 				usedParamIndex: paramIndex + subParams.length
 			};
 		}
@@ -662,7 +676,7 @@ export class PostgreSQLProvider implements DataProvider
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(cond.value);
 			return {
-				conditionSql: `"${safeFieldName}" ${cond.op} $${paramIndex}`,
+				conditionSql: `${this.escapeIdentifier(safeFieldName)} ${cond.op} $${paramIndex}`,
 				usedParamIndex: paramIndex + 1
 			};
 		}
@@ -678,7 +692,7 @@ export class PostgreSQLProvider implements DataProvider
 			params.push(...cond.values);
 			const placeholders = cond.values.map((_, i) => `$${paramIndex + i}`).join(', ');
 			return {
-				conditionSql: `"${safeFieldName}" ${cond.op} (${placeholders})`,
+				conditionSql: `${this.escapeIdentifier(safeFieldName)} ${cond.op} (${placeholders})`,
 				usedParamIndex: paramIndex + cond.values.length
 			};
 		}
@@ -729,7 +743,7 @@ export class PostgreSQLProvider implements DataProvider
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
 			return {
-				conditionSql: `"${safeFieldName}" LIKE $${paramIndex}`,
+				conditionSql: `${this.escapeIdentifier(safeFieldName)} LIKE $${paramIndex}`,
 				usedParamIndex: paramIndex + 1
 			};
 		}
