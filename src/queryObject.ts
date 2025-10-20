@@ -1,5 +1,48 @@
 
 /**
+ * Field reference type - represents a field with optional table/repository prefix
+ * Formats supported:
+ * - 'field' - simple field name
+ * - 'table.field' - table-prefixed field
+ * - 'repository.field' - repository-prefixed field
+ */
+export type FieldReference = string | {
+	table?: string;
+	repository?: string;
+	field: string;
+};
+
+/**
+ * Helper function to create a field reference with table prefix
+ */
+export function tableField(table: string, field: string): FieldReference
+{
+	return { table, field };
+}
+
+/**
+ * Helper function to create a field reference with repository prefix
+ */
+export function repoField(repository: string, field: string): FieldReference
+{
+	return { repository, field };
+}
+
+/**
+ * Converts a FieldReference to string format
+ */
+export function fieldRefToString(ref: FieldReference): string
+{
+	if (typeof ref === 'string')
+	{
+		return ref;
+	}
+
+	const prefix = ref.table || ref.repository;
+	return prefix ? `${prefix}.${ref.field}` : ref.field;
+}
+
+/**
  * Condition type, describes SQL query where conditions.
  * Supports basic operators, AND/OR/NOT, IN, LIKE, etc.
  * Examples:
@@ -9,13 +52,13 @@
  * e.g.: { field: 'id', op: 'IN', subquery: {...} }
  */
 export type Condition =
-	| { field: string; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
-	| { field: string; op: 'IN' | 'NOT IN'; subquery: Query }
-	| { field: string; op: 'IN' | 'NOT IN'; values: any[] }
+	| { field: FieldReference; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
+	| { field: FieldReference; op: 'IN' | 'NOT IN'; subquery: Query }
+	| { field: FieldReference; op: 'IN' | 'NOT IN'; values: any[] }
 	| { and: Condition[] }
 	| { or: Condition[] }
 	| { not: Condition }
-	| { like: { field: string; pattern: string } };
+	| { like: { field: FieldReference; pattern: string } };
 
 /**
  * Aggregate description, specifies aggregation type, target field, and alias.
@@ -26,7 +69,7 @@ export interface Aggregate
 	/** Aggregation type */
 	type: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
 	/** Target field */
-	field: string;
+	field: FieldReference;
 	/** Result alias (optional) */
 	alias?: string;
 }
@@ -60,7 +103,7 @@ export interface Query
 	/** Target table name */
 	table: string;
 	/** Fields to query or operate (can include aggregates) */
-	fields?: (string | Aggregate)[];
+	fields?: (FieldReference | Aggregate)[];
 	/** Data to insert or update (for INSERT/UPDATE) */
 	values?: Record<string, any>;
 	/** Query condition */
@@ -68,9 +111,9 @@ export interface Query
 	/** JOIN settings */
 	joins?: Join[];
 	/** GROUP BY fields */
-	groupBy?: string[];
+	groupBy?: FieldReference[];
 	/** ORDER BY settings */
-	orderBy?: { field: string; direction: 'ASC' | 'DESC' }[];
+	orderBy?: { field: FieldReference; direction: 'ASC' | 'DESC' }[];
 	/** Limit number of rows */
 	limit?: number;
 	/** Pagination offset */
