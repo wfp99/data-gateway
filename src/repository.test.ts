@@ -1101,11 +1101,13 @@ describe('Repository - Unit Tests', () =>
 			});
 
 			// Verify that table-prefixed columns are mapped correctly
+			// Main table (users) fields should NOT have table prefix
+			// Joined table (orders) fields SHOULD have table prefix
 			expect(results).toHaveLength(1);
 			expect(results[0]).toEqual({
-				'users.userId': 1,
-				'users.userName': 'John',
-				'orders.orderId': 101
+				userId: 1,           // Not 'users.userId' - main table fields don't have prefix
+				userName: 'John',    // Not 'users.userName' - main table fields don't have prefix
+				'orders.orderId': 101 // Joined table fields keep prefix
 			});
 		});
 
