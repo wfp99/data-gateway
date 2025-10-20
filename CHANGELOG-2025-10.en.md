@@ -6,9 +6,9 @@
 
 **Release Date**: 2025-10-20
 **Status**: ✅ Completed
-**Test Pass Rate**: 100% (251/251 tests)
+**Test Pass Rate**: 100% (262/262 tests)
 
-This update successfully implements three type safety enhancement features:
+This update successfully implements three type safety enhancement features and fixes a critical SQL field escaping issue:
 
 ### Implemented Features Summary
 
@@ -28,17 +28,30 @@ This update successfully implements three type safety enhancement features:
 - Smart warning system (only triggers when needed)
 - **8 tests** all passed
 
+### 🐛 Bug Fixes
+
+#### 4. Table.Field Format SQL Escaping Fix ✅
+- **Issue**: When using `table.field` format (e.g., `users.id`), the entire string was treated as a single field name with quotes
+- **Impact**: All Providers (MySQL, PostgreSQL, SQLite)
+- **Fix**: Added `escapeIdentifier` method to properly handle separate quoting for table and field names
+- **Results**:
+  - MySQL: `` `users.id` `` → `` `users`.`id` `` ✅
+  - PostgreSQL/SQLite: `"users.id"` → `"users"."id"` ✅
+- **Testing**: Added **11 dedicated tests** covering all SQL operations
+- **Backward Compatible**: Does not affect existing single field name usage
+
 ## Test Statistics
 
 ```
-Total Tests: 251 tests (100% passed)
-├─ New in This Release: 68 tests
-│  ├─ FieldReference:     6 ✅
-│  ├─ QueryBuilder:      54 ✅
-│  └─ Field Conflict:     8 ✅
+Total Tests: 262 tests (100% passed)
+├─ New in This Release: 79 tests
+│  ├─ FieldReference:       6 ✅
+│  ├─ QueryBuilder:        54 ✅
+│  ├─ Field Conflict:       8 ✅
+│  └─ Field Escaping:      11 ✅ (New)
 └─ Existing Features: 183 tests ✅
 
-Execution Time: ~900ms
+Execution Time: ~1070ms
 ```
 
 ## Quick Examples
@@ -81,6 +94,26 @@ await userRepo.find({
 // ⚠️ Warning: Field 'id' exists in multiple tables...
 ```
 
+### Table.Field Format Proper Escaping
+```typescript
+// Now correctly handles table.field format
+await userRepo.find({
+  fields: [
+    'users.id',        // ✅ Converts to `users`.`id`
+    'users.name',      // ✅ Converts to `users`.`name`
+    'posts.title'      // ✅ Converts to `posts`.`title`
+  ],
+  where: {
+    field: 'users.status',  // ✅ Properly handled
+    op: '=',
+    value: 'active'
+  },
+  orderBy: [
+    { field: 'users.created_at', direction: 'DESC' }  // ✅ Properly handled
+  ]
+});
+```
+
 ## Impact & Benefits
 
 ### Development Experience Improvements
@@ -102,17 +135,21 @@ await userRepo.find({
 ## Code Change Statistics
 
 ```
-New Files: 2
+New Files: 3
 ├─ src/queryBuilder.ts (~400 lines)
-└─ src/fieldConflictDetection.test.ts (~405 lines)
+├─ src/fieldConflictDetection.test.ts (~405 lines)
+└─ src/dataProviders/fieldEscape.test.ts (~350 lines) [New]
 
-Modified Files: 3
+Modified Files: 6
 ├─ src/queryObject.ts (+60 lines)
 ├─ src/repository.ts (+165 lines)
-└─ src/index.ts (+5 lines)
+├─ src/index.ts (+5 lines)
+├─ src/dataProviders/MySQLProvider.ts (+20 lines) [New]
+├─ src/dataProviders/PostgreSQLProvider.ts (+20 lines) [New]
+└─ src/dataProviders/SQLiteProvider.ts (+20 lines) [New]
 
-New Code: ~635 lines
-New Tests: ~1,305 lines
+New Code: ~695 lines
+New Tests: ~1,655 lines
 ```
 
 ## Next Steps
