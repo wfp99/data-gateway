@@ -3,3 +3,5 @@ dist/
 .env
 coverage/
 test.db
+docs/development/
+.DS_Store

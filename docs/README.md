@@ -2,7 +2,7 @@
 
 [English](./README.en.md) | **繁體中文**
 
-Data Gateway 是一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源、自訂提供者和中介軟體。
+Data Gateway 是一個輕量級、可擴展、型別安全的 Node.js 資料存取閘道，支援多種資料來源、自訂提供者和中介軟體。
 
 ## 📖 文件導覽
 
@@ -12,6 +12,10 @@ Data Gateway 是一個輕量級、可擴展的 Node.js 資料存取閘道，支�
 - [基本使用方法](./guides/basic-usage.md)
 - [日誌功能指南](./guides/logging.md)
 - [Date 物件處理](./guides/date-handling.md)
+
+### ✨ 型別安全功能 (2025-10)
+- [**型別安全完整文件**](./guides/type-safety-2025-10.md) - FieldReference、QueryBuilder、欄位衝突檢測
+- [更新日誌](../CHANGELOG-2025-10.md) - 快速概覽
 
 ### 🏗️ 核心概念
 - [架構設計](./core/architecture.md)
@@ -31,9 +35,23 @@ Data Gateway 是一個輕量級、可擴展的 Node.js 資料存取閘道，支�
 
 ### 📋 其他資源
 - [常見問題 FAQ](./faq.md)
-- [使用範例 (測試文件)](../src/__tests__)
+- [使用範例 (測試文件)](../src/__tests/)
 - [授權說明](../LICENSE)
-- [專案首頁](../README.md)
+- [專案首頁](../README.zh-TW.md)
+
+---
+
+## 🎯 最新功能
+
+### 型別安全改進 (2025-10-20) ✅
+
+**251 個測試全部通過** - 新增 68 個測試
+
+1. **FieldReference 型別系統** - 型別安全的欄位引用
+2. **QueryBuilder 模式** - 流暢的鏈式 API
+3. **欄位衝突檢測** - 自動偵測 JOIN 查詢衝突
+
+**了解更多**: [型別安全完整文件](./guides/type-safety-2025-10.md)
 
 ---
 

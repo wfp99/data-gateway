@@ -4,11 +4,29 @@
 
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
 [![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
+[![Tests](https://img.shields.io/badge/tests-251%20passing-brightgreen.svg)](./src)
 
-一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源（MySQL、PostgreSQL、SQLite、遠端 API）、自訂資料提供者和中介軟體。非常適合建構現代、資料驅動的應用程式。
+一個輕量級、可擴展、**型別安全**的 Node.js 資料存取閘道,支援多種資料來源 (MySQL、PostgreSQL、SQLite、遠端 API)、自訂資料提供者和中介軟體。非常適合建構現代、資料驅動的應用程式。
+
+## ✨ 主要功能
+
+- 🎯 **型別安全**: 完整的 TypeScript 支援,編譯時期錯誤檢測
+- 🔄 **流暢 API**: QueryBuilder 模式,直觀的鏈式呼叫
+- 🔍 **智慧警告**: 自動偵測 JOIN 查詢中的欄位衝突
+- 🚀 **多資料來源**: 支援 MySQL、PostgreSQL、SQLite、遠端 API
+- 🔌 **可擴展**: 輕鬆新增自訂資料提供者
+- 🎭 **中介軟體**: 支援請求/回應攔截
+- 📦 **輕量級**: 核心程式碼 < 15KB (壓縮後)
+- 🧪 **高測試覆蓋**: 251 個測試全部通過
 
 ## 目錄
 
+- [安裝](#安裝)
+- [快速入門](#快速入門)
+- [2025-10 版本更新:型別安全改進](#2025-10-版本更新型別安全改進)
+  - [FieldReference 型別系統](#fieldreference-型別系統)
+  - [QueryBuilder 模式](#querybuilder-模式)
+  - [欄位衝突檢測](#欄位衝突檢測)
 - [CRUD 操作](#crud-操作)
 - [查詢功能](#查詢功能)
 - [JOIN 查詢](#join-查詢)
@@ -115,6 +133,141 @@ const config = {
 	await gateway.disconnectAll();
 })();
 ```
+
+## 2025-10 版本更新:型別安全改進 ✨
+
+### FieldReference 型別系統
+
+使用新的型別安全欄位引用系統,提供更好的開發體驗:
+
+```typescript
+import { tableField, repoField } from '@wfp99/data-gateway';
+
+// 之前: 容易拼錯的字串格式
+await userRepo.find({
+  fields: ['users.id', 'users.name'],
+  where: { field: 'status', op: '=', value: 'active' }
+});
+
+// 現在: 型別安全的 FieldReference
+await userRepo.find({
+  fields: [
+    tableField('users', 'id'),      // IDE 自動完成
+    tableField('users', 'name')
+  ],
+  where: {
+    field: tableField('users', 'status'),
+    op: '=',
+    value: 'active'
+  }
+});
+
+// 使用 repository 前綴 (自動處理欄位映射)
+await userRepo.find({
+  fields: [
+    repoField('user', 'userId'),    // 自動映射為 user_id
+    repoField('user', 'userName')   // 自動映射為 user_name
+  ]
+});
+```
+
+### QueryBuilder 模式
+
+使用流暢的 API 建構複雜查詢:
+
+```typescript
+import { QueryBuilder, tableField } from '@wfp99/data-gateway';
+
+// 簡單查詢
+const query = new QueryBuilder('users')
+  .select('id', 'name', 'email')
+  .where(w => w
+    .equals('status', 'active')
+    .greaterThan('age', 18)
+  )
+  .orderBy('createdAt', 'DESC')
+  .limit(10)
+  .build();
+
+// 複雜的 JOIN 查詢
+const complexQuery = new QueryBuilder('users')
+  .select(
+    tableField('users', 'id'),
+    tableField('users', 'name'),
+    tableField('posts', 'title')
+  )
+  .count('posts.id', 'postCount')
+  .leftJoin(
+    { table: 'posts' },
+    on => on.equals(
+      tableField('users', 'id'),
+      tableField('posts', 'userId')
+    )
+  )
+  .where(w => w
+    .equals(tableField('users', 'status'), 'active')
+    .or(or => or
+      .equals(tableField('users', 'role'), 'admin')
+      .equals(tableField('users', 'role'), 'moderator')
+    )
+  )
+  .groupBy(tableField('users', 'id'))
+  .orderBy(tableField('users', 'createdAt'), 'DESC')
+  .limit(50)
+  .build();
+
+// 使用建構的查詢
+const users = await userRepo.find(query);
+
+// INSERT/UPDATE/DELETE 也支援
+const insertQuery = QueryBuilder
+  .insert('users', {
+    name: 'John',
+    email: 'john@example.com'
+  })
+  .build();
+
+const updateQuery = QueryBuilder
+  .update('users', { status: 'inactive' })
+  .where(w => w.equals('id', 123))
+  .build();
+```
+
+### 欄位衝突檢測
+
+在 JOIN 查詢時自動偵測並警告欄位名稱衝突:
+
+```typescript
+// 這個查詢會觸發警告
+await userRepo.find({
+  fields: ['id', 'name'],  // 'id' 沒有加前綴
+  joins: [{
+    type: 'LEFT',
+    source: { repository: 'posts' },
+    on: { field: 'id', op: '=', value: 'posts.userId' }
+  }]
+});
+// ⚠️ Warning: Field 'id' exists in multiple tables: ['users', 'posts'].
+//    Consider using tableField('users', 'id') to avoid ambiguity.
+
+// 解決方案: 使用 table-prefixed 欄位
+await userRepo.find({
+  fields: [
+    tableField('users', 'id'),    // ✅ 不會警告
+    tableField('users', 'name'),
+    tableField('posts', 'title')
+  ],
+  joins: [{
+    type: 'LEFT',
+    source: { repository: 'posts' },
+    on: { field: 'id', op: '=', value: 'posts.userId' }
+  }]
+});
+```
+
+**了解更多**: 詳細的功能說明和範例請參閱 [型別安全功能文件](./docs/guides/type-safety-2025-10.md)
+
+---
 
 ## 說明文件
 

@@ -541,23 +541,9 @@ Use `table` when:
 - Use PostgreSQL
 - Or simulate it using a UNION of two queries (LEFT JOIN and RIGHT JOIN)
 
-### Migrating from Old Version
+---
 
-If your code uses the old JOIN syntax (directly using `table` property), you need to update to the new `source` property:
-
-```typescript
-// ❌ Old syntax (deprecated)
-joins: [
-  {
-    type: 'INNER',
-    table: 'users',  // Old version used table property directly
-    on: { field: 'user_id', op: '=', value: 'users.id' }
-  }
-]
-
-// ✅ New syntax
-joins: [
-  {
+## Advanced Query Examples
     type: 'INNER',
     source: { table: 'users' },  // New version uses source object
     on: { field: 'user_id', op: '=', value: 'users.id' }
@@ -571,15 +557,11 @@ joins: [
     source: { repository: 'users' },  // Better choice
     on: { field: 'user_id', op: '=', value: 'users.id' }
   }
-]
-```
+---
 
-**Migration Steps:**
-1. Change all `table: 'table_name'` to `source: { table: 'table_name' }`
-2. If the table is already defined as a repository, recommend changing to `source: { repository: 'repo_name' }`
-3. Test all queries using JOIN to ensure they work correctly
+## Advanced Query Examples
 
-## Middleware Usage
+### Complex Nested Conditions
 
 Middleware allows you to inject custom logic before and after query execution.
 

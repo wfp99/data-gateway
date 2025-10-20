@@ -897,29 +897,8 @@ const query: Query = {
 };
 ```
 
-### Migrating from Old Version
+**Note**: It's recommended to use `source: { repository: 'repo_name' }` when the table is already defined as a repository, as this allows automatic field mapping.
 
-The old JOIN syntax used the `table` property directly, while the new version uses the `source` object:
+---
 
-```typescript
-// ❌ Old syntax (deprecated)
-joins: [{
-  type: 'INNER',
-  table: 'users',
-  on: { ... }
-}]
-
-// ✅ New syntax
-joins: [{
-  type: 'INNER',
-  source: { table: 'users' },
-  on: { ... }
-}]
-
-// ✅ Recommended: Use repository
-joins: [{
-  type: 'INNER',
-  source: { repository: 'users' },
-  on: { ... }
-}]
-```
+## EntityFieldMapper

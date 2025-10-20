@@ -137,6 +137,90 @@ For more detailed information, please see the [documentation](./docs/README.en.m
 ### Additional Guides
 - [Date Object Handling](./docs/guides/date-handling.en.md) - Automatic Date conversion with databases
 
+## October 2025 Update: Type Safety Improvements ✨
+
+### FieldReference Type System
+
+Use the new type-safe field reference system for better development experience:
+
+```typescript
+import { tableField, repoField } from '@wfp99/data-gateway';
+
+// Before: Error-prone string format
+await userRepo.find({
+  fields: ['users.id', 'users.name'],
+  where: { field: 'status', op: '=', value: 'active' }
+});
+
+// Now: Type-safe FieldReference
+await userRepo.find({
+  fields: [
+    tableField('users', 'id'),      // IDE auto-completion
+    tableField('users', 'name')
+  ],
+  where: {
+    field: tableField('users', 'status'),
+    op: '=',
+    value: 'active'
+  }
+});
+```
+
+### QueryBuilder Pattern
+
+Fluent chaining API for cleaner query construction:
+
+```typescript
+import { QueryBuilder } from '@wfp99/data-gateway';
+
+const query = new QueryBuilder('users')
+  .select('id', 'name', 'email')
+  .where(w => w
+    .equals('status', 'active')
+    .greaterThan('age', 18)
+  )
+  .orderBy('createdAt', 'DESC')
+  .limit(10)
+  .build();
+
+const users = await userRepo.find(query);
+```
+
+### Field Conflict Detection
+
+Automatically detect and warn about field name conflicts in JOIN queries:
+
+```typescript
+// If both tables have 'id' field, get a helpful warning
+await userRepo.find({
+  fields: ['id', 'name'],  // Which table's 'id'?
+  joins: [{
+    type: 'LEFT',
+    source: { repository: 'posts' },
+    on: { field: 'id', op: '=', value: 'posts.userId' }
+  }]
+});
+// ⚠️ Warning: Field 'id' exists in multiple tables...
+
+// Solution: Use table-prefixed fields
+await userRepo.find({
+  fields: [
+    tableField('users', 'id'),
+    tableField('users', 'name'),
+    tableField('posts', 'title')
+  ],
+  joins: [{
+    type: 'LEFT',
+    source: { repository: 'posts' },
+    on: { field: 'id', op: '=', value: 'posts.userId' }
+  }]
+});
+```
+
+**Learn More**: For detailed feature descriptions and examples, see [Type Safety Documentation](./docs/guides/type-safety-2025-10.en.md)
+
+---
+
 ## Core Concepts
 
 - **DataProvider**: Abstract interface for data sources. Built-in support for MySQL, SQLite, RemoteProvider, and custom providers.
