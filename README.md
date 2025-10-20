@@ -225,6 +225,49 @@ const deletedRows = await userRepo.delete(
 console.log(`${deletedRows} user(s) deleted.`);
 ```
 
+### JOIN Queries
+
+Data Gateway supports table join queries (JOIN), allowing you to query related data from multiple tables.
+
+```typescript
+const orderRepo = gateway.getRepository('orders');
+
+// Use repository name for JOIN (recommended approach)
+const ordersWithUsers = await orderRepo?.find({
+  fields: ['id', 'order_date', 'total', 'user.name', 'user.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },  // Reference another repository
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ],
+  where: { field: 'status', op: '=', value: 'completed' }
+});
+
+// Or use table name directly for JOIN
+const ordersWithProfiles = await orderRepo?.find({
+  fields: ['id', 'order_date', 'profiles.address'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { table: 'user_profiles' },  // Specify table name directly
+      on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+    }
+  ]
+});
+
+console.log('Orders with user information:', ordersWithUsers?.rows);
+```
+
+**Supported JOIN Types:**
+- `INNER`: Inner join, returns only matching records from both tables
+- `LEFT`: Left outer join, returns all records from left table and matching records from right table
+- `RIGHT`: Right outer join, returns all records from right table and matching records from left table
+- `FULL`: Full outer join (Note: MySQL and SQLite do not support FULL OUTER JOIN)
+
+For detailed usage, see [Basic Usage Guide](./docs/guides/basic-usage.en.md#join-queries).
+
 ## Middleware Example
 
 You can add middleware to intercept and process queries before or after they are executed. Middleware is useful for logging, validation, caching, etc.

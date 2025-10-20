@@ -418,5 +418,275 @@ completeExample();
 
 - [Repository API](./repository.md) - 儲存庫操作詳細說明
 - [DataProvider API](./data-provider.md) - 資料提供者介面
+- [Query Object API](#query-object-api) - 查詢物件詳細說明
 - [連線池管理](../advanced/connection-pooling.md) - 連線池詳細設定
 - [錯誤處理](../advanced/error-handling.md) - 錯誤處理最佳實務
+
+---
+
+## Query Object API
+
+### Query 介面
+
+`Query` 物件描述一個 SQL 查詢操作（SELECT/INSERT/UPDATE/DELETE），支援欄位選擇、條件、JOIN、GROUP BY、ORDER BY、分頁等功能。
+
+```typescript
+export interface Query {
+  /** 查詢類型：SELECT/INSERT/UPDATE/DELETE */
+  type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';
+
+  /** 目標資料表名稱 */
+  table: string;
+
+  /** 要查詢或操作的欄位（可包含聚合函數） */
+  fields?: (string | Aggregate)[];
+
+  /** 要插入或更新的資料（用於 INSERT/UPDATE） */
+  values?: Record<string, any>;
+
+  /** 查詢條件 */
+  where?: Condition;
+
+  /** JOIN 設定 */
+  joins?: Join[];
+
+  /** GROUP BY 欄位 */
+  groupBy?: string[];
+
+  /** ORDER BY 設定 */
+  orderBy?: { field: string; direction: 'ASC' | 'DESC' }[];
+
+  /** 限制回傳列數 */
+  limit?: number;
+
+  /** 分頁偏移量 */
+  offset?: number;
+}
+```
+
+### Join 介面
+
+描述 JOIN 操作，定義 JOIN 類型、目標資料表或 repository，以及連接條件。
+
+```typescript
+export interface Join {
+  /** JOIN 類型 */
+  type: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+
+  /** JOIN 來源（可使用 repository 名稱或資料表名稱） */
+  source: JoinSource;
+
+  /** JOIN 條件 */
+  on: Condition;
+}
+
+export type JoinSource =
+  | { repository: string }   // 引用 repository 名稱（推薦）
+  | { table: string };        // 直接引用資料表名稱
+```
+
+#### JoinSource 說明
+
+`JoinSource` 支援兩種方式指定 JOIN 的目標：
+
+**1. 使用 repository 名稱（推薦）**
+
+```typescript
+{
+  type: 'INNER',
+  source: { repository: 'users' },
+  on: { field: 'user_id', op: '=', value: 'users.id' }
+}
+```
+
+優點：
+- 自動使用該 repository 的 EntityFieldMapper
+- 程式碼更易維護
+- 保持一致性
+
+**2. 直接使用資料表名稱**
+
+```typescript
+{
+  type: 'LEFT',
+  source: { table: 'user_profiles' },
+  on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+}
+```
+
+使用時機：
+- 資料表未定義為 repository
+- 臨時表或視圖
+- 不需要欄位對應的情況
+
+#### JOIN 類型支援
+
+不同資料庫對 JOIN 類型的支援有差異：
+
+| JOIN 類型 | MySQL | PostgreSQL | SQLite | 說明 |
+|-----------|-------|------------|--------|------|
+| INNER     | ✅    | ✅         | ✅     | 內部連接 |
+| LEFT      | ✅    | ✅         | ✅     | 左外連接 |
+| RIGHT     | ✅    | ✅         | ✅     | 右外連接 |
+| FULL      | ❌    | ✅         | ❌     | 完全外連接 |
+
+**重要提示：** 使用 `FULL` 類型前請確認您的資料庫支援。
+
+### Condition 類型
+
+描述 SQL WHERE 條件，支援基本運算子、AND/OR/NOT、IN、LIKE 等。
+
+```typescript
+export type Condition =
+  // 基本比較運算
+  | { field: string; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
+
+  // IN/NOT IN（使用子查詢）
+  | { field: string; op: 'IN' | 'NOT IN'; subquery: Query }
+
+  // IN/NOT IN（使用值陣列）
+  | { field: string; op: 'IN' | 'NOT IN'; values: any[] }
+
+  // AND 條件
+  | { and: Condition[] }
+
+  // OR 條件
+  | { or: Condition[] }
+
+  // NOT 條件
+  | { not: Condition }
+
+  // LIKE 模糊查詢
+  | { like: { field: string; pattern: string } };
+```
+
+### Aggregate 介面
+
+描述聚合函數，指定聚合類型、目標欄位和別名。
+
+```typescript
+export interface Aggregate {
+  /** 聚合類型 */
+  type: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+
+  /** 目標欄位 */
+  field: string;
+
+  /** 結果別名（可選） */
+  alias?: string;
+}
+```
+
+### QueryResult 介面
+
+描述查詢結果，適用於各種 CRUD 操作和不同類型的資料庫。
+
+```typescript
+export interface QueryResult<T = any> {
+  /** SELECT 查詢結果資料列 */
+  rows?: T[];
+
+  /** INSERT、UPDATE 或 DELETE 操作影響的資料列數 */
+  affectedRows?: number;
+
+  /** 新插入資料的主鍵值（某些資料庫支援） */
+  insertId?: number | string;
+
+  /** 查詢失敗時的錯誤訊息 */
+  error?: string;
+}
+```
+
+### JOIN 使用範例
+
+#### 基本 JOIN 查詢
+
+```typescript
+// 使用 repository 名稱（推薦）
+const query: Query = {
+  type: 'SELECT',
+  table: 'orders',
+  fields: ['orders.id', 'orders.total', 'users.name', 'users.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ],
+  where: { field: 'orders.status', op: '=', value: 'completed' }
+};
+
+const result = await orderRepo.query(query);
+```
+
+#### 多個 JOIN
+
+```typescript
+const query: Query = {
+  type: 'SELECT',
+  table: 'orders',
+  fields: [
+    'orders.id',
+    'users.name',
+    'products.name',
+    'products.price'
+  ],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    },
+    {
+      type: 'LEFT',
+      source: { repository: 'products' },
+      on: { field: 'product_id', op: '=', value: 'products.id' }
+    }
+  ]
+};
+```
+
+#### 使用資料表名稱的 JOIN
+
+```typescript
+const query: Query = {
+  type: 'SELECT',
+  table: 'orders',
+  fields: ['orders.id', 'profiles.address'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { table: 'user_profiles' },
+      on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+    }
+  ]
+};
+```
+
+### 從舊版遷移
+
+舊版 JOIN 語法直接使用 `table` 屬性，新版使用 `source` 物件：
+
+```typescript
+// ❌ 舊版語法（已棄用）
+joins: [{
+  type: 'INNER',
+  table: 'users',
+  on: { ... }
+}]
+
+// ✅ 新版語法
+joins: [{
+  type: 'INNER',
+  source: { table: 'users' },
+  on: { ... }
+}]
+
+// ✅ 推薦使用 repository
+joins: [{
+  type: 'INNER',
+  source: { repository: 'users' },
+  on: { ... }
+}]
+```

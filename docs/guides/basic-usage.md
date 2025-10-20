@@ -240,6 +240,344 @@ const stats = await userRepo?.find({
 console.log('部門統計:', stats?.rows);
 ```
 
+## JOIN 查詢
+
+Data Gateway 支援資料表關聯查詢（JOIN），讓您可以從多個資料表中查詢相關資料。JOIN 功能支援兩種方式：使用 repository 名稱（推薦）或直接使用資料表名稱。
+
+### 基本 JOIN 範例
+
+#### 使用 Repository 名稱（推薦）
+
+使用 repository 名稱可以自動利用欄位對應（EntityFieldMapper）功能，讓程式碼更簡潔。
+
+```typescript
+const orderRepo = gateway.getRepository('orders');
+
+// INNER JOIN：查詢訂單及對應的使用者資訊
+const ordersWithUsers = await orderRepo?.find({
+  fields: ['id', 'order_date', 'total', 'user.name', 'user.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },  // 引用另一個 repository
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ],
+  where: { field: 'status', op: '=', value: 'completed' }
+});
+
+console.log('訂單及使用者資訊:', ordersWithUsers?.rows);
+```
+
+#### 直接使用資料表名稱
+
+當您需要 JOIN 未定義為 repository 的資料表時，可以直接指定資料表名稱。
+
+```typescript
+// LEFT JOIN：查詢訂單及可能存在的使用者個人資料
+const ordersWithProfiles = await orderRepo?.find({
+  fields: ['id', 'order_date', 'total', 'profiles.address', 'profiles.phone'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { table: 'user_profiles' },  // 直接指定資料表名稱
+      on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+    }
+  ]
+});
+```
+
+### JOIN 類型說明
+
+Data Gateway 支援四種標準的 JOIN 類型：
+
+#### INNER JOIN（內部連接）
+
+只返回兩個資料表中都有匹配記錄的資料。
+
+```typescript
+// 查詢有使用者資訊的訂單
+const result = await orderRepo?.find({
+  fields: ['orders.id', 'orders.total', 'users.name', 'users.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ]
+});
+```
+
+#### LEFT JOIN（左外連接）
+
+返回左表（主表）的所有記錄，以及右表中匹配的記錄。如果右表沒有匹配，則相關欄位為 null。
+
+```typescript
+// 查詢所有訂單，包含可能不存在的使用者資訊
+const result = await orderRepo?.find({
+  fields: ['orders.id', 'orders.total', 'users.name'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ]
+});
+```
+
+#### RIGHT JOIN（右外連接）
+
+返回右表的所有記錄，以及左表中匹配的記錄。如果左表沒有匹配，則相關欄位為 null。
+
+```typescript
+// 查詢所有使用者，包含他們可能沒有的訂單
+const result = await userRepo?.find({
+  fields: ['users.id', 'users.name', 'orders.total'],
+  joins: [
+    {
+      type: 'RIGHT',
+      source: { repository: 'orders' },
+      on: { field: 'id', op: '=', value: 'orders.user_id' }
+    }
+  ]
+});
+```
+
+#### FULL OUTER JOIN（完全外連接）
+
+返回兩個資料表的所有記錄，無論是否有匹配。沒有匹配的欄位為 null。
+
+**重要提示：** MySQL 和 SQLite 不支援 FULL OUTER JOIN，只有 PostgreSQL 支援。
+
+```typescript
+// PostgreSQL 專用：查詢所有使用者和訂單，無論是否有匹配
+const result = await userRepo?.find({
+  fields: ['users.id', 'users.name', 'orders.id', 'orders.total'],
+  joins: [
+    {
+      type: 'FULL',
+      source: { repository: 'orders' },
+      on: { field: 'id', op: '=', value: 'orders.user_id' }
+    }
+  ]
+});
+```
+
+### 多個 JOIN
+
+您可以在一個查詢中使用多個 JOIN 來關聯多個資料表。
+
+```typescript
+// 查詢訂單、使用者和產品資訊
+const orderRepo = gateway.getRepository('orders');
+const result = await orderRepo?.find({
+  fields: [
+    'orders.id',
+    'orders.order_date',
+    'users.name',
+    'users.email',
+    'products.name',
+    'products.price'
+  ],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    },
+    {
+      type: 'LEFT',
+      source: { repository: 'products' },
+      on: { field: 'product_id', op: '=', value: 'products.id' }
+    }
+  ],
+  where: {
+    and: [
+      { field: 'orders.status', op: '=', value: 'completed' },
+      { field: 'orders.order_date', op: '>', value: new Date('2024-01-01') }
+    ]
+  },
+  orderBy: [{ field: 'orders.order_date', direction: 'DESC' }]
+});
+
+console.log('訂單詳細資訊:', result?.rows);
+```
+
+### 結合欄位對應使用
+
+當您的 repository 配置了 EntityFieldMapper 時，JOIN 查詢會自動使用欄位對應。
+
+```typescript
+// 假設 userRepo 配置了欄位對應
+// 應用程式欄位 -> 資料庫欄位
+// name -> full_name
+// email -> email_address
+// createdAt -> created_at
+
+const orderRepo = gateway.getRepository('orders');
+const result = await orderRepo?.find({
+  fields: [
+    'id',
+    'orderDate',           // 自動對應到 order_date
+    'user.name',           // 自動對應到 users.full_name
+    'user.email'           // 自動對應到 users.email_address
+  ],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },  // 自動使用 users repository 的欄位對應
+      on: { field: 'userId', op: '=', value: 'users.id' }
+    }
+  ],
+  where: {
+    field: 'createdAt',    // 自動對應到 orders.created_at
+    op: '>',
+    value: lastWeek
+  }
+});
+```
+
+### JOIN 查詢最佳實務
+
+#### 1. 優先使用 Repository 名稱
+
+```typescript
+// ✅ 推薦：使用 repository 名稱
+joins: [
+  {
+    type: 'INNER',
+    source: { repository: 'users' },  // 可利用欄位對應和其他 repository 設定
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+
+// ⚠️ 只在必要時使用：直接指定資料表名稱
+joins: [
+  {
+    type: 'INNER',
+    source: { table: 'users' },  // 無法使用欄位對應
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+```
+
+#### 2. 明確指定所需欄位
+
+```typescript
+// ✅ 好的做法：只查詢需要的欄位
+fields: ['orders.id', 'orders.total', 'users.name', 'users.email']
+
+// ❌ 避免：使用 * 查詢所有欄位（除非真的需要）
+fields: ['*']
+```
+
+#### 3. 注意資料庫的 JOIN 類型支援
+
+```typescript
+// ✅ 所有資料庫都支援
+type: 'INNER' | 'LEFT' | 'RIGHT'
+
+// ⚠️ 只有 PostgreSQL 支援
+type: 'FULL'
+
+// 建議：在使用 FULL OUTER JOIN 前檢查資料庫類型
+const provider = gateway.getProvider('myProvider');
+if (provider?.type === 'postgresql') {
+  // 安全使用 FULL OUTER JOIN
+  joins: [{ type: 'FULL', ... }]
+}
+```
+
+#### 4. 使用 WHERE 條件過濾結果
+
+```typescript
+// ✅ 推薦：先過濾再 JOIN，提升效能
+const result = await orderRepo?.find({
+  fields: ['orders.id', 'users.name'],
+  where: {
+    and: [
+      { field: 'orders.status', op: '=', value: 'completed' },  // 先過濾主表
+      { field: 'orders.order_date', op: '>', value: lastMonth }
+    ]
+  },
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ]
+});
+```
+
+### 常見問題
+
+#### Q: 如何決定使用 repository 還是 table？
+
+**A:** 優先使用 `repository`：
+- ✅ 當該資料表已定義為 repository 時
+- ✅ 需要使用欄位對應（EntityFieldMapper）時
+- ✅ 想要保持程式碼的一致性和可維護性時
+
+使用 `table` 的情況：
+- ⚠️ 資料表未定義為 repository
+- ⚠️ 需要 JOIN 的是臨時表或視圖
+
+#### Q: JOIN 的效能如何優化？
+
+**A:** 建議：
+1. 確保 JOIN 條件中使用的欄位有建立索引
+2. 只查詢需要的欄位，避免使用 `*`
+3. 使用 WHERE 條件先過濾資料再 JOIN
+4. 對於大量資料，考慮使用分頁（limit 和 offset）
+5. 監控連線池狀態，確保有足夠的連線
+
+#### Q: 為什麼我的 FULL OUTER JOIN 失敗了？
+
+**A:** MySQL 和 SQLite 不支援 FULL OUTER JOIN。如果您需要此功能：
+- 使用 PostgreSQL
+- 或者使用兩個查詢（LEFT JOIN 和 RIGHT JOIN）的 UNION 來模擬
+
+### 從舊版遷移
+
+如果您的程式碼使用舊版的 JOIN 語法（直接使用 `table` 屬性），需要更新為新的 `source` 屬性：
+
+```typescript
+// ❌ 舊版語法（已棄用）
+joins: [
+  {
+    type: 'INNER',
+    table: 'users',  // 舊版直接使用 table 屬性
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+
+// ✅ 新版語法
+joins: [
+  {
+    type: 'INNER',
+    source: { table: 'users' },  // 新版使用 source 物件
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+
+// ✅ 推薦：使用 repository 名稱
+joins: [
+  {
+    type: 'INNER',
+    source: { repository: 'users' },  // 更好的選擇
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+```
+
+**遷移步驟：**
+1. 將所有 `table: 'table_name'` 改為 `source: { table: 'table_name' }`
+2. 如果該資料表已定義為 repository，建議改用 `source: { repository: 'repo_name' }`
+3. 測試所有使用 JOIN 的查詢確保正常運作
+
 ## 中介軟體使用
 
 中介軟體允許您在查詢執行前後插入自訂邏輯。

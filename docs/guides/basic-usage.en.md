@@ -6,6 +6,7 @@ This guide provides a comprehensive overview of Data Gateway's features and usag
 
 - [CRUD Operations](#crud-operations)
 - [Query Features](#query-features)
+- [JOIN Queries](#join-queries)
 - [Middleware Usage](#middleware-usage)
 - [Field Mapping](#field-mapping)
 - [Multiple Data Sources](#multiple-data-sources)
@@ -239,6 +240,344 @@ const stats = await userRepo?.find({
 
 console.log('Department statistics:', stats?.rows);
 ```
+
+## JOIN Queries
+
+Data Gateway supports table join queries (JOIN), allowing you to query related data from multiple tables. JOIN functionality supports two approaches: using repository names (recommended) or directly using table names.
+
+### Basic JOIN Examples
+
+#### Using Repository Names (Recommended)
+
+Using repository names automatically leverages the EntityFieldMapper functionality for cleaner code.
+
+```typescript
+const orderRepo = gateway.getRepository('orders');
+
+// INNER JOIN: Query orders with corresponding user information
+const ordersWithUsers = await orderRepo?.find({
+  fields: ['id', 'order_date', 'total', 'user.name', 'user.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },  // Reference another repository
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ],
+  where: { field: 'status', op: '=', value: 'completed' }
+});
+
+console.log('Orders with user information:', ordersWithUsers?.rows);
+```
+
+#### Using Table Names Directly
+
+When you need to JOIN tables that aren't defined as repositories, you can specify the table name directly.
+
+```typescript
+// LEFT JOIN: Query orders with possibly existing user profiles
+const ordersWithProfiles = await orderRepo?.find({
+  fields: ['id', 'order_date', 'total', 'profiles.address', 'profiles.phone'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { table: 'user_profiles' },  // Specify table name directly
+      on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+    }
+  ]
+});
+```
+
+### JOIN Type Descriptions
+
+Data Gateway supports four standard JOIN types:
+
+#### INNER JOIN
+
+Returns only records that have matching values in both tables.
+
+```typescript
+// Query orders with user information
+const result = await orderRepo?.find({
+  fields: ['orders.id', 'orders.total', 'users.name', 'users.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ]
+});
+```
+
+#### LEFT JOIN (Left Outer Join)
+
+Returns all records from the left table (main table), and matching records from the right table. If there's no match in the right table, related fields will be null.
+
+```typescript
+// Query all orders, including possibly non-existent user information
+const result = await orderRepo?.find({
+  fields: ['orders.id', 'orders.total', 'users.name'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ]
+});
+```
+
+#### RIGHT JOIN (Right Outer Join)
+
+Returns all records from the right table, and matching records from the left table. If there's no match in the left table, related fields will be null.
+
+```typescript
+// Query all users, including their possibly non-existent orders
+const result = await userRepo?.find({
+  fields: ['users.id', 'users.name', 'orders.total'],
+  joins: [
+    {
+      type: 'RIGHT',
+      source: { repository: 'orders' },
+      on: { field: 'id', op: '=', value: 'orders.user_id' }
+    }
+  ]
+});
+```
+
+#### FULL OUTER JOIN
+
+Returns all records from both tables, regardless of whether there's a match. Unmatched fields will be null.
+
+**Important Note:** MySQL and SQLite do not support FULL OUTER JOIN, only PostgreSQL does.
+
+```typescript
+// PostgreSQL only: Query all users and orders, regardless of matching
+const result = await userRepo?.find({
+  fields: ['users.id', 'users.name', 'orders.id', 'orders.total'],
+  joins: [
+    {
+      type: 'FULL',
+      source: { repository: 'orders' },
+      on: { field: 'id', op: '=', value: 'orders.user_id' }
+    }
+  ]
+});
+```
+
+### Multiple JOINs
+
+You can use multiple JOINs in a single query to relate multiple tables.
+
+```typescript
+// Query orders, users, and product information
+const orderRepo = gateway.getRepository('orders');
+const result = await orderRepo?.find({
+  fields: [
+    'orders.id',
+    'orders.order_date',
+    'users.name',
+    'users.email',
+    'products.name',
+    'products.price'
+  ],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    },
+    {
+      type: 'LEFT',
+      source: { repository: 'products' },
+      on: { field: 'product_id', op: '=', value: 'products.id' }
+    }
+  ],
+  where: {
+    and: [
+      { field: 'orders.status', op: '=', value: 'completed' },
+      { field: 'orders.order_date', op: '>', value: new Date('2024-01-01') }
+    ]
+  },
+  orderBy: [{ field: 'orders.order_date', direction: 'DESC' }]
+});
+
+console.log('Detailed order information:', result?.rows);
+```
+
+### Using with Field Mapping
+
+When your repository is configured with an EntityFieldMapper, JOIN queries will automatically use field mapping.
+
+```typescript
+// Assuming userRepo is configured with field mapping
+// Application field -> Database field
+// name -> full_name
+// email -> email_address
+// createdAt -> created_at
+
+const orderRepo = gateway.getRepository('orders');
+const result = await orderRepo?.find({
+  fields: [
+    'id',
+    'orderDate',           // Automatically mapped to order_date
+    'user.name',           // Automatically mapped to users.full_name
+    'user.email'           // Automatically mapped to users.email_address
+  ],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },  // Automatically uses users repository's field mapping
+      on: { field: 'userId', op: '=', value: 'users.id' }
+    }
+  ],
+  where: {
+    field: 'createdAt',    // Automatically mapped to orders.created_at
+    op: '>',
+    value: lastWeek
+  }
+});
+```
+
+### JOIN Query Best Practices
+
+#### 1. Prefer Using Repository Names
+
+```typescript
+// ✅ Recommended: Use repository name
+joins: [
+  {
+    type: 'INNER',
+    source: { repository: 'users' },  // Can utilize field mapping and other repository settings
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+
+// ⚠️ Use only when necessary: Specify table name directly
+joins: [
+  {
+    type: 'INNER',
+    source: { table: 'users' },  // Cannot use field mapping
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+```
+
+#### 2. Explicitly Specify Required Fields
+
+```typescript
+// ✅ Good practice: Only query needed fields
+fields: ['orders.id', 'orders.total', 'users.name', 'users.email']
+
+// ❌ Avoid: Using * to query all fields (unless truly needed)
+fields: ['*']
+```
+
+#### 3. Be Aware of Database JOIN Type Support
+
+```typescript
+// ✅ Supported by all databases
+type: 'INNER' | 'LEFT' | 'RIGHT'
+
+// ⚠️ Only supported by PostgreSQL
+type: 'FULL'
+
+// Recommendation: Check database type before using FULL OUTER JOIN
+const provider = gateway.getProvider('myProvider');
+if (provider?.type === 'postgresql') {
+  // Safe to use FULL OUTER JOIN
+  joins: [{ type: 'FULL', ... }]
+}
+```
+
+#### 4. Use WHERE Conditions to Filter Results
+
+```typescript
+// ✅ Recommended: Filter before JOIN for better performance
+const result = await orderRepo?.find({
+  fields: ['orders.id', 'users.name'],
+  where: {
+    and: [
+      { field: 'orders.status', op: '=', value: 'completed' },  // Filter main table first
+      { field: 'orders.order_date', op: '>', value: lastMonth }
+    ]
+  },
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ]
+});
+```
+
+### Common Questions
+
+#### Q: How do I decide whether to use repository or table?
+
+**A:** Prefer using `repository`:
+- ✅ When the table is already defined as a repository
+- ✅ When you need to use field mapping (EntityFieldMapper)
+- ✅ When you want to maintain code consistency and maintainability
+
+Use `table` when:
+- ⚠️ The table is not defined as a repository
+- ⚠️ You need to JOIN temporary tables or views
+
+#### Q: How can I optimize JOIN performance?
+
+**A:** Recommendations:
+1. Ensure fields used in JOIN conditions are indexed
+2. Only query needed fields, avoid using `*`
+3. Use WHERE conditions to filter data before JOIN
+4. For large datasets, consider using pagination (limit and offset)
+5. Monitor connection pool status to ensure sufficient connections
+
+#### Q: Why is my FULL OUTER JOIN failing?
+
+**A:** MySQL and SQLite do not support FULL OUTER JOIN. If you need this functionality:
+- Use PostgreSQL
+- Or simulate it using a UNION of two queries (LEFT JOIN and RIGHT JOIN)
+
+### Migrating from Old Version
+
+If your code uses the old JOIN syntax (directly using `table` property), you need to update to the new `source` property:
+
+```typescript
+// ❌ Old syntax (deprecated)
+joins: [
+  {
+    type: 'INNER',
+    table: 'users',  // Old version used table property directly
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+
+// ✅ New syntax
+joins: [
+  {
+    type: 'INNER',
+    source: { table: 'users' },  // New version uses source object
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+
+// ✅ Recommended: Use repository name
+joins: [
+  {
+    type: 'INNER',
+    source: { repository: 'users' },  // Better choice
+    on: { field: 'user_id', op: '=', value: 'users.id' }
+  }
+]
+```
+
+**Migration Steps:**
+1. Change all `table: 'table_name'` to `source: { table: 'table_name' }`
+2. If the table is already defined as a repository, recommend changing to `source: { repository: 'repo_name' }`
+3. Test all queries using JOIN to ensure they work correctly
 
 ## Middleware Usage
 

@@ -652,5 +652,274 @@ if (!provider) {
 
 - [Repository API](./repository.en.md)
 - [DataProvider API](./data-provider.en.md)
-- [Query Object API](./query-object.en.md)
+- [Query Object API](#query-object-api)
 - [Connection Pooling Guide](../advanced/connection-pooling.en.md)
+
+---
+
+## Query Object API
+
+### Query Interface
+
+The `Query` object describes a SQL query operation (SELECT/INSERT/UPDATE/DELETE), supporting field selection, conditions, JOIN, GROUP BY, ORDER BY, pagination, and more.
+
+```typescript
+export interface Query {
+  /** Query type: SELECT/INSERT/UPDATE/DELETE */
+  type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';
+
+  /** Target table name */
+  table: string;
+
+  /** Fields to query or operate (can include aggregates) */
+  fields?: (string | Aggregate)[];
+
+  /** Data to insert or update (for INSERT/UPDATE) */
+  values?: Record<string, any>;
+
+  /** Query condition */
+  where?: Condition;
+
+  /** JOIN settings */
+  joins?: Join[];
+
+  /** GROUP BY fields */
+  groupBy?: string[];
+
+  /** ORDER BY settings */
+  orderBy?: { field: string; direction: 'ASC' | 'DESC' }[];
+
+  /** Limit number of rows */
+  limit?: number;
+
+  /** Pagination offset */
+  offset?: number;
+}
+```
+
+### Join Interface
+
+Describes a JOIN operation, defining JOIN type, target table or repository, and join condition.
+
+```typescript
+export interface Join {
+  /** JOIN type */
+  type: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+
+  /** JOIN source (can use repository name or table name) */
+  source: JoinSource;
+
+  /** JOIN condition */
+  on: Condition;
+}
+
+export type JoinSource =
+  | { repository: string }   // Reference repository by name (recommended)
+  | { table: string };        // Reference table by name directly
+```
+
+#### JoinSource Description
+
+`JoinSource` supports two ways to specify the JOIN target:
+
+**1. Using repository name (Recommended)**
+
+```typescript
+{
+  type: 'INNER',
+  source: { repository: 'users' },
+  on: { field: 'user_id', op: '=', value: 'users.id' }
+}
+```
+
+Advantages:
+- Automatically uses the repository's EntityFieldMapper
+- More maintainable code
+- Maintains consistency
+
+**2. Using table name directly**
+
+```typescript
+{
+  type: 'LEFT',
+  source: { table: 'user_profiles' },
+  on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+}
+```
+
+When to use:
+- Table is not defined as a repository
+- Temporary tables or views
+- When field mapping is not needed
+
+#### JOIN Type Support
+
+Different databases have varying support for JOIN types:
+
+| JOIN Type | MySQL | PostgreSQL | SQLite | Description |
+|-----------|-------|------------|--------|-------------|
+| INNER     | ✅    | ✅         | ✅     | Inner join |
+| LEFT      | ✅    | ✅         | ✅     | Left outer join |
+| RIGHT     | ✅    | ✅         | ✅     | Right outer join |
+| FULL      | ❌    | ✅         | ❌     | Full outer join |
+
+**Important Note:** Please verify your database supports the JOIN type before using `FULL`.
+
+### Condition Type
+
+Describes SQL WHERE conditions, supporting basic operators, AND/OR/NOT, IN, LIKE, etc.
+
+```typescript
+export type Condition =
+  // Basic comparison operations
+  | { field: string; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
+
+  // IN/NOT IN (with subquery)
+  | { field: string; op: 'IN' | 'NOT IN'; subquery: Query }
+
+  // IN/NOT IN (with value array)
+  | { field: string; op: 'IN' | 'NOT IN'; values: any[] }
+
+  // AND condition
+  | { and: Condition[] }
+
+  // OR condition
+  | { or: Condition[] }
+
+  // NOT condition
+  | { not: Condition }
+
+  // LIKE pattern matching
+  | { like: { field: string; pattern: string } };
+```
+
+### Aggregate Interface
+
+Describes aggregate functions, specifying aggregation type, target field, and alias.
+
+```typescript
+export interface Aggregate {
+  /** Aggregation type */
+  type: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+
+  /** Target field */
+  field: string;
+
+  /** Result alias (optional) */
+  alias?: string;
+}
+```
+
+### QueryResult Interface
+
+Describes query results, suitable for various CRUD operations and different types of databases.
+
+```typescript
+export interface QueryResult<T = any> {
+  /** SELECT query result rows */
+  rows?: T[];
+
+  /** Number of rows affected by INSERT, UPDATE, or DELETE operations */
+  affectedRows?: number;
+
+  /** Primary key value of newly inserted data (optional, supported by some databases) */
+  insertId?: number | string;
+
+  /** Error message when query fails */
+  error?: string;
+}
+```
+
+### JOIN Usage Examples
+
+#### Basic JOIN Query
+
+```typescript
+// Using repository name (recommended)
+const query: Query = {
+  type: 'SELECT',
+  table: 'orders',
+  fields: ['orders.id', 'orders.total', 'users.name', 'users.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ],
+  where: { field: 'orders.status', op: '=', value: 'completed' }
+};
+
+const result = await orderRepo.query(query);
+```
+
+#### Multiple JOINs
+
+```typescript
+const query: Query = {
+  type: 'SELECT',
+  table: 'orders',
+  fields: [
+    'orders.id',
+    'users.name',
+    'products.name',
+    'products.price'
+  ],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    },
+    {
+      type: 'LEFT',
+      source: { repository: 'products' },
+      on: { field: 'product_id', op: '=', value: 'products.id' }
+    }
+  ]
+};
+```
+
+#### JOIN Using Table Name
+
+```typescript
+const query: Query = {
+  type: 'SELECT',
+  table: 'orders',
+  fields: ['orders.id', 'profiles.address'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { table: 'user_profiles' },
+      on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+    }
+  ]
+};
+```
+
+### Migrating from Old Version
+
+The old JOIN syntax used the `table` property directly, while the new version uses the `source` object:
+
+```typescript
+// ❌ Old syntax (deprecated)
+joins: [{
+  type: 'INNER',
+  table: 'users',
+  on: { ... }
+}]
+
+// ✅ New syntax
+joins: [{
+  type: 'INNER',
+  source: { table: 'users' },
+  on: { ... }
+}]
+
+// ✅ Recommended: Use repository
+joins: [{
+  type: 'INNER',
+  source: { repository: 'users' },
+  on: { ... }
+}]
+```

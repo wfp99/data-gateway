@@ -7,15 +7,16 @@
 
 一個輕量級、可擴展的 Node.js 資料存取閘道，支援多種資料來源（MySQL、PostgreSQL、SQLite、遠端 API）、自訂資料提供者和中介軟體。非常適合建構現代、資料驅動的應用程式。
 
-## 功能特色
+## 目錄
 
-- 支援多種資料來源：MySQL、PostgreSQL、SQLite、遠端 API
-- **連線池支援**，提升效能和資源管理
-- **可配置的日誌記錄**，支援多種日誌級別（ALL、DEBUG、INFO、WARN、ERROR、OFF）
-- 可自訂的提供者和中介軟體
-- 型別安全，使用 TypeScript 撰寫
-- 統一的查詢物件模型，支援 CRUD 和進階查詢
-- 易於擴充和整合
+- [CRUD 操作](#crud-操作)
+- [查詢功能](#查詢功能)
+- [JOIN 查詢](#join-查詢)
+- [中介軟體使用](#中介軟體使用)
+- [欄位對應](#欄位對應)
+- [多資料來源切換](#多資料來源切換)
+- [錯誤處理](#錯誤處理)
+- [效能最佳化](#效能最佳化)
 
 ## 安裝
 
@@ -224,6 +225,49 @@ const deletedRows = await userRepo.delete(
 
 console.log(`已刪除 ${deletedRows} 位使用者。`);
 ```
+
+### JOIN 查詢
+
+Data Gateway 支援資料表關聯查詢（JOIN），讓您可以從多個資料表中查詢相關資料。
+
+```typescript
+const orderRepo = gateway.getRepository('orders');
+
+// 使用 repository 名稱進行 JOIN（推薦方式）
+const ordersWithUsers = await orderRepo?.find({
+  fields: ['id', 'order_date', 'total', 'user.name', 'user.email'],
+  joins: [
+    {
+      type: 'INNER',
+      source: { repository: 'users' },  // 引用另一個 repository
+      on: { field: 'user_id', op: '=', value: 'users.id' }
+    }
+  ],
+  where: { field: 'status', op: '=', value: 'completed' }
+});
+
+// 或直接使用資料表名稱進行 JOIN
+const ordersWithProfiles = await orderRepo?.find({
+  fields: ['id', 'order_date', 'profiles.address'],
+  joins: [
+    {
+      type: 'LEFT',
+      source: { table: 'user_profiles' },  // 直接指定資料表名稱
+      on: { field: 'user_id', op: '=', value: 'user_profiles.user_id' }
+    }
+  ]
+});
+
+console.log('訂單及使用者資訊:', ordersWithUsers?.rows);
+```
+
+**支援的 JOIN 類型：**
+- `INNER`: 內部連接，只返回兩個資料表中都匹配的記錄
+- `LEFT`: 左外連接，返回左表所有記錄及右表匹配的記錄
+- `RIGHT`: 右外連接，返回右表所有記錄及左表匹配的記錄
+- `FULL`: 完全外連接（注意：MySQL 和 SQLite 不支援 FULL OUTER JOIN）
+
+詳細使用方法請參考[基本使用方法](./docs/guides/basic-usage.md#join-查詢)。
 
 ## Middleware 範例
 
