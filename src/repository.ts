@@ -2,8 +2,9 @@
 import { DataProvider } from './dataProvider';
 import { DefaultFieldMapper, EntityFieldMapper } from './entityFieldMapper';
 import { Middleware, runMiddlewares } from './middleware';
-import { Query, Condition, Aggregate } from './queryObject';
+import { Query, Condition, Aggregate, Join } from './queryObject';
 import { getLogger } from './logger';
+import { DataGateway } from './dataGateway';
 
 /**
  * Generic Repository, provides methods to operate on specified type objects using DataProvider.
@@ -13,17 +14,48 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	private readonly logger = getLogger('Repository');
 
 	/**
+	 * Constructor
+	 * @param dataGateway DataGateway instance
 	 * @param provider Data provider
 	 * @param table Table name
 	 * @param mapper EntityMapper instance, defaults to DefaultEntityMapper
 	 */
 	constructor(
+		private readonly dataGateway: DataGateway,
 		private readonly provider: DataProvider,
 		private readonly table: string,
 		private readonly mapper: M = new DefaultFieldMapper<T>() as M,
 		private readonly middlewares: Middleware[] = []
-	) {
+	)
+	{
 		this.logger.debug(`Repository initialized`, { table: this.table, middlewares: this.middlewares.length });
+	}
+
+	/**
+	 * Get the DataProvider instance
+	 * @returns DataProvider
+	 */
+	getProvider(): DataProvider
+	{
+		return this.provider;
+	}
+
+	/**
+	 * Get the table name
+	 * @returns Table name
+	 */
+	getTable(): string
+	{
+		return this.table;
+	}
+
+	/**
+	 * Get the EntityFieldMapper instance
+	 * @returns EntityFieldMapper
+	 */
+	getMapper(): M
+	{
+		return this.mapper;
 	}
 
 	/**
@@ -35,6 +67,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	 */
 	private mapQueryToDb(query: Query): Query
 	{
+		// Helper function to convert fields and aggregates
 		const convertField = (field: string | Aggregate): string | Aggregate =>
 		{
 			if (typeof field === 'string')
@@ -53,6 +86,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			return field;
 		};
 
+		// Helper function to convert conditions recursively
 		const convertCondition = (cond: Condition): Condition =>
 		{
 			if (!cond || typeof cond !== 'object') return cond;
@@ -90,6 +124,99 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			return newCond;
 		};
 
+		// Helper function to convert JOIN conditions
+		const convertJoinOn = (join: Join): Join =>
+		{
+			// Determine the repository and mapper for the JOIN source
+			let repo: Repository<any> | undefined;
+			let mapper: EntityFieldMapper<any> = this.mapper; // Default to main repository's mapper
+			let table: string | undefined;
+
+			// Type guard to check if source has repository property
+			if ('repository' in join.source)
+			{
+				repo = this.dataGateway.getRepository(join.source.repository);
+				if (repo)
+				{
+					mapper = repo.getMapper();
+					table = repo.getTable();
+				}
+			}
+			else if ('table' in join.source)
+			{
+				// Direct table reference, use main repository's mapper
+				table = join.source.table;
+			}
+
+			if (!table)
+			{
+				this.logger.error(`[Repository.mapQueryToDb] Unable to determine table for JOIN source: ${JSON.stringify(join.source)}`);
+				throw new Error(`[Repository.mapQueryToDb] Unable to determine table for JOIN source: ${JSON.stringify(join.source)}`);
+			}
+
+			// Create a new Join object instead of modifying the original
+			const newJoin: Join = {
+				type: join.type,
+				source: { table },
+				on: { ...join.on }
+			};
+
+			// Convert the ON condition
+			// Important: Only support simple field comparison for now
+			// The left side uses the main repository's mapper, and the right side uses the join source's mapper
+			if ('field' in newJoin.on && typeof newJoin.on.field === 'string')
+			{
+				// Use the repository's mapper to convert the left field
+				newJoin.on.field = this.mapper.toDbField(newJoin.on.field);
+
+				// Use the join source's mapper to convert the right field (in the value)
+				if (newJoin.on.op === '=' || newJoin.on.op === '!=' || newJoin.on.op === '>' || newJoin.on.op === '<' || newJoin.on.op === '>=' || newJoin.on.op === '<=')
+				{
+					// Handle table.field or repository.field format in value
+					const valueStr = String(newJoin.on.value);
+					if (valueStr.includes('.'))
+					{
+						// Split table/repository.field format
+						const parts = valueStr.split('.');
+						if (parts.length === 2)
+						{
+							let [tableOrRepoName, fieldName] = parts;
+
+							// Check if the prefix is a repository name, if so, convert to table name
+							const referencedRepo = this.dataGateway.getRepository(tableOrRepoName);
+							if (referencedRepo)
+							{
+								// It's a repository name, use its table name
+								tableOrRepoName = referencedRepo.getTable();
+								// Use the referenced repository's mapper to convert the field
+								const referencedMapper = referencedRepo.getMapper();
+								fieldName = referencedMapper.toDbField(fieldName);
+							}
+							else
+							{
+								// It's a direct table name, use the join source's mapper to convert the field
+								fieldName = mapper.toDbField(fieldName);
+							}
+
+							newJoin.on.value = `${tableOrRepoName}.${fieldName}`;
+						}
+						else
+						{
+							// If format is unexpected, keep original value
+							newJoin.on.value = valueStr;
+						}
+					}
+					else
+					{
+						// No table prefix, convert the entire value as a field name
+						newJoin.on.value = mapper.toDbField(valueStr);
+					}
+				}
+			}
+
+			return newJoin;
+		}
+
 		const newQuery: Query = { ...query };
 
 		if (newQuery.fields)
@@ -99,6 +226,12 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		if (newQuery.where)
 		{
 			newQuery.where = convertCondition(newQuery.where);
+		}
+		if (newQuery.joins)
+		{
+			newQuery.joins = newQuery.joins.map(join => ({
+				...convertJoinOn(join)
+			}));
 		}
 		if (newQuery.orderBy)
 		{
