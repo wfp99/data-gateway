@@ -155,6 +155,7 @@ export class PostgreSQLProvider implements DataProvider
 
 	/**
 	 * Validate the security of query objects
+	 * @param query The query object.
 	 */
 	private validateQuery(query: Query): void
 	{
@@ -217,9 +218,17 @@ export class PostgreSQLProvider implements DataProvider
 		{
 			for (const join of query.joins)
 			{
-				this.validateIdentifier(join.table);
-				this.validateJoinType(join.type);
-				this.validateConditionStructure(join.on);
+				if ('table' in join.source)
+				{
+					this.validateIdentifier(join.source.table!);
+					this.validateJoinType(join.type);
+					this.validateConditionStructure(join.on);
+				}
+				else
+				{
+					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
+					throw new Error('JOIN source must specify a table name');
+				}
 			}
 		}
 
@@ -240,6 +249,7 @@ export class PostgreSQLProvider implements DataProvider
 
 	/**
 	 * Recursively validate condition structure
+	 * @param condition The condition object.
 	 */
 	private validateConditionStructure(condition: any): void
 	{
@@ -454,11 +464,19 @@ export class PostgreSQLProvider implements DataProvider
 		{
 			for (const join of query.joins)
 			{
-				const safeJoinType = this.validateJoinType(join.type);
-				const safeJoinTable = this.validateIdentifier(join.table);
-				const { conditionSql, usedParamIndex } = this.conditionToSQL(join.on, params, paramIndex);
-				sql += ` ${safeJoinType} JOIN "${safeJoinTable}" ON ` + conditionSql;
-				paramIndex = usedParamIndex;
+				if ('table' in join.source)
+				{
+					const safeJoinType = this.validateJoinType(join.type);
+					const safeJoinTable = this.validateIdentifier(join.source.table!);
+					const { conditionSql, usedParamIndex } = this.conditionToSQL(join.on, params, paramIndex);
+					sql += ` ${safeJoinType} JOIN "${safeJoinTable}" ON ` + conditionSql;
+					paramIndex = usedParamIndex;
+				}
+				else
+				{
+					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
+					throw new Error('JOIN source must specify a table name');
+				}
 			}
 		}
 
