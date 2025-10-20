@@ -1,6 +1,6 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult } from '../queryObject';
-import { getLogger, Logger } from '../logger';
+import { getLogger } from '../logger';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 
@@ -147,6 +147,7 @@ export class SQLiteProvider implements DataProvider
 
 	/**
 	 * Validate the security of query objects
+	 * @param query The query object.
 	 */
 	private validateQuery(query: Query): void
 	{
@@ -209,9 +210,17 @@ export class SQLiteProvider implements DataProvider
 		{
 			for (const join of query.joins)
 			{
-				this.validateIdentifier(join.table);
-				this.validateJoinType(join.type);
-				this.validateConditionStructure(join.on);
+				if ('table' in join.source)
+				{
+					this.validateIdentifier(join.source.table!);
+					this.validateJoinType(join.type);
+					this.validateConditionStructure(join.on);
+				}
+				else
+				{
+					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
+					throw new Error('JOIN source must specify a table name');
+				}
 			}
 		}
 
@@ -232,6 +241,7 @@ export class SQLiteProvider implements DataProvider
 
 	/**
 	 * Recursively validate condition structure
+	 * @param condition The condition object.
 	 */
 	private validateConditionStructure(condition: any): void
 	{
@@ -440,9 +450,17 @@ export class SQLiteProvider implements DataProvider
 		{
 			for (const join of query.joins)
 			{
-				const safeJoinType = this.validateJoinType(join.type);
-				const safeJoinTable = this.validateIdentifier(join.table);
-				sql += ` ${safeJoinType} JOIN "${safeJoinTable}" ON ` + this.conditionToSQL(join.on, params);
+				if ('table' in join.source)
+				{
+					const safeJoinType = this.validateJoinType(join.type);
+					const safeJoinTable = this.validateIdentifier(join.source.table!);
+					sql += ` ${safeJoinType} JOIN "${safeJoinTable}" ON ` + this.conditionToSQL(join.on, params);
+				}
+				else
+				{
+					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
+					throw new Error('JOIN source must specify a table name');
+				}
 			}
 		}
 
