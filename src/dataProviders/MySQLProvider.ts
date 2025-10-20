@@ -371,9 +371,17 @@ export class MySQLProvider implements DataProvider
 		{
 			for (const join of query.joins)
 			{
-				const joinType = this.validateJoinType(join.type);
-				const joinTable = this.validateIdentifier(join.table);
-				sql += ` ${joinType} JOIN \`${joinTable}\` ON ` + this.conditionToSQL(join.on, params);
+				if ('table' in join.source)
+				{
+					const joinType = this.validateJoinType(join.type);
+					const joinTable = this.validateIdentifier(join.source.table);
+					sql += ` ${joinType} JOIN \`${joinTable}\` ON ` + this.conditionToSQL(join.on, params);
+				}
+				else
+				{
+					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
+					throw new Error('JOIN source must specify a table name');
+				}
 			}
 		}
 		if (query.where)
@@ -783,9 +791,17 @@ export class MySQLProvider implements DataProvider
 		{
 			for (const join of query.joins)
 			{
-				this.validateJoinType(join.type);
-				this.validateIdentifier(join.table);
-				this.validateCondition(join.on);
+				if ('table' in join.source)
+				{
+					this.validateJoinType(join.type);
+					this.validateIdentifier(join.source.table!);
+					this.validateCondition(join.on);
+				}
+				else
+				{
+					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
+					throw new Error('JOIN source must specify a table name');
+				}
 			}
 		}
 
