@@ -3,7 +3,8 @@
  * It exports all the public-facing classes, types, and interfaces, and defines the main `DataGateway` class
  * which acts as the central coordinator for data providers and repositories.
  */
-import { Query, Condition, Aggregate, Join } from './queryObject';
+import { Query, Condition, Aggregate, Join, FieldReference, tableField, repoField, fieldRefToString } from './queryObject';
+import { QueryBuilder, WhereBuilder, JoinConditionBuilder } from './queryBuilder';
 import { DataProvider, ConnectionPoolStatus } from './dataProvider';
 import { RemoteProvider, RemoteProviderOptions } from './dataProviders/remoteProvider';
 import { Middleware } from './middleware';
@@ -20,6 +21,8 @@ export type { PostgreSQLProviderOptions, PostgreSQLConnectionPoolConfig } from '
 export
 {
 	Query, Condition, Aggregate, Join,
+	FieldReference, tableField, repoField, fieldRefToString,
+	QueryBuilder, WhereBuilder, JoinConditionBuilder,
 	DataProvider, ConnectionPoolStatus,
 	RemoteProvider, RemoteProviderOptions,
 	Middleware,
