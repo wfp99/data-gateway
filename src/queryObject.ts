@@ -31,6 +31,11 @@ export interface Aggregate
 	alias?: string;
 }
 
+/** JOIN source can be specified by repository name or table name. */
+export type JoinSource =
+	| { repository: string }   // Reference a repository by name
+	| { table: string };        // Reference a table directly
+
 /**
  * JOIN description, defines JOIN type, target table, and join condition.
  */
@@ -38,8 +43,8 @@ export interface Join
 {
 	/** JOIN type (INNER/LEFT/RIGHT/FULL) */
 	type: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
-	/** Target table name */
-	table: string;
+	/** Source table or repository for the JOIN */
+	source: JoinSource;
 	/** JOIN condition */
 	on: Condition;
 }
