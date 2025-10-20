@@ -1,6 +1,6 @@
 
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
-import { Condition, Query, QueryResult } from '../queryObject';
+import { Condition, Query, QueryResult, fieldRefToString, FieldReference, Aggregate } from '../queryObject';
 import mysql, { Connection, ConnectionOptions, Pool, PoolOptions } from 'mysql2/promise';
 import { getLogger } from '../logger';
 
@@ -342,14 +342,10 @@ export class MySQLProvider implements DataProvider
 
 		if (query.fields && query.fields.length > 0)
 		{
-			sql += query.fields.map(f =>
+			const fields = query.fields.map(f =>
 			{
-				if (typeof f === 'string')
-				{
-					const fieldName = this.validateIdentifier(f);
-					return `\`${fieldName}\``;
-				}
-				else
+				// Check if it's an Aggregate (has 'type' property)
+				if (typeof f === 'object' && f !== null && 'type' in f && f.type)
 				{
 					// Validate aggregate type
 					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
@@ -357,11 +353,18 @@ export class MySQLProvider implements DataProvider
 					{
 						throw new Error(`Invalid aggregate type: ${f.type}`);
 					}
-					const fieldName = this.validateIdentifier(f.field);
+					const fieldName = this.validateIdentifier(fieldRefToString(f.field));
 					const alias = f.alias ? this.validateAlias(f.alias) : '';
 					return `${f.type}(\`${fieldName}\`)${alias ? ' AS `' + alias + '`' : ''}`;
 				}
+				else
+				{
+					// It's a FieldReference (string or object format)
+					const fieldName = this.validateIdentifier(fieldRefToString(f as FieldReference));
+					return `\`${fieldName}\``;
+				}
 			}).join(', ');
+			sql += fields;
 		} else
 		{
 			sql += '*';
@@ -390,14 +393,14 @@ export class MySQLProvider implements DataProvider
 		}
 		if (query.groupBy && query.groupBy.length > 0)
 		{
-			const validatedGroupBy = query.groupBy.map(f => this.validateIdentifier(f));
+			const validatedGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
 			sql += ' GROUP BY ' + validatedGroupBy.map(f => `\`${f}\``).join(', ');
 		}
 		if (query.orderBy && query.orderBy.length > 0)
 		{
 			sql += ' ORDER BY ' + query.orderBy.map(o =>
 			{
-				const fieldName = this.validateIdentifier(o.field);
+				const fieldName = this.validateIdentifier(fieldRefToString(o.field));
 				const direction = this.validateDirection(o.direction);
 				return `\`${fieldName}\` ${direction}`;
 			}).join(', ');
@@ -515,7 +518,7 @@ export class MySQLProvider implements DataProvider
 			// Build the subquery into SQL and merge its parameters
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
-			const fieldName = this.validateIdentifier(cond.field);
+			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			const result = `\`${fieldName}\` ${cond.op} (${sql})`;
 			this.logger.debug('Subquery condition converted to SQL', { result });
 			return result;
@@ -531,7 +534,7 @@ export class MySQLProvider implements DataProvider
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			// Validate field name
-			const fieldName = this.validateIdentifier(cond.field);
+			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(cond.value);
 			const result = `\`${fieldName}\` ${cond.op} ?`;
 			this.logger.debug('Field comparison condition converted to SQL', { result });
@@ -546,7 +549,7 @@ export class MySQLProvider implements DataProvider
 				this.logger.error('Invalid IN/NOT IN operator', { operator: cond.op, allowedOps });
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const fieldName = this.validateIdentifier(cond.field);
+			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values);
 			const result = `\`${fieldName}\` ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 			this.logger.debug('IN/NOT IN condition converted to SQL', { result, valueCount: cond.values.length });
@@ -580,7 +583,7 @@ export class MySQLProvider implements DataProvider
 		else if ('like' in cond)
 		{
 			this.logger.debug('Processing LIKE condition', { field: cond.like.field, pattern: cond.like.pattern });
-			const fieldName = this.validateIdentifier(cond.like.field);
+			const fieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
 			const result = `\`${fieldName}\` LIKE ?`;
 			this.logger.debug('LIKE condition converted to SQL', { result });
@@ -745,24 +748,36 @@ export class MySQLProvider implements DataProvider
 			this.logger.debug('Validating query fields', { fieldCount: query.fields.length });
 			for (const field of query.fields)
 			{
-				if (typeof field === 'string')
+				// Check if it's an Aggregate (has 'type' property that's a valid aggregate function)
+				if (typeof field === 'object' && field !== null && 'type' in field)
 				{
-					this.validateIdentifier(field);
+					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+					const fieldType = (field as any).type;
+					if (validAggregates.includes(fieldType))
+					{
+						// It's an Aggregate
+						const aggregate = field as Aggregate;
+						if (!validAggregates.includes(aggregate.type))
+						{
+							this.logger.error('Invalid aggregate type detected', { aggregateType: aggregate.type, validAggregates });
+							throw new Error(`Invalid aggregate type: ${aggregate.type}`);
+						}
+						this.validateIdentifier(fieldRefToString(aggregate.field));
+						if (aggregate.alias)
+						{
+							this.validateAlias(aggregate.alias);
+						}
+					}
+					else
+					{
+						// It's a FieldReference object
+						this.validateIdentifier(fieldRefToString(field as FieldReference));
+					}
 				}
 				else
 				{
-					// Validate aggregate
-					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
-					if (!validAggregates.includes(field.type))
-					{
-						this.logger.error('Invalid aggregate type detected', { aggregateType: field.type, validAggregates });
-						throw new Error(`Invalid aggregate type: ${field.type}`);
-					}
-					this.validateIdentifier(field.field);
-					if (field.alias)
-					{
-						this.validateAlias(field.alias);
-					}
+					// It's a string FieldReference
+					this.validateIdentifier(fieldRefToString(field as FieldReference));
 				}
 			}
 		}
@@ -772,7 +787,7 @@ export class MySQLProvider implements DataProvider
 		{
 			for (const order of query.orderBy)
 			{
-				this.validateIdentifier(order.field);
+				this.validateIdentifier(fieldRefToString(order.field));
 				this.validateDirection(order.direction);
 			}
 		}
@@ -782,7 +797,7 @@ export class MySQLProvider implements DataProvider
 		{
 			for (const field of query.groupBy)
 			{
-				this.validateIdentifier(field);
+				this.validateIdentifier(fieldRefToString(field));
 			}
 		}
 
