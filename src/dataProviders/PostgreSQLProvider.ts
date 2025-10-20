@@ -1,5 +1,5 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
-import { Condition, Query, QueryResult } from '../queryObject';
+import { Condition, Query, QueryResult, fieldRefToString, FieldReference, Aggregate } from '../queryObject';
 import { Pool, PoolClient, PoolConfig, Client, ClientConfig } from 'pg';
 import { getLogger } from '../logger';
 
@@ -173,22 +173,42 @@ export class PostgreSQLProvider implements DataProvider
 			this.logger.debug('Validating SELECT query fields', { fieldCount: query.fields.length });
 			for (const field of query.fields)
 			{
-				if (typeof field === 'string')
+				// Check if it's an Aggregate (has 'type' property that's a valid aggregate function)
+				if (typeof field === 'object' && field !== null && 'type' in field)
 				{
-					if (field !== '*')
+					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+					const fieldType = (field as any).type;
+					if (validAggregates.includes(fieldType))
 					{
-						this.validateIdentifier(field);
+						// It's an Aggregate
+						const aggregate = field as Aggregate;
+						this.validateIdentifier(aggregate.type);
+						if (aggregate.field)
+						{
+							this.validateIdentifier(fieldRefToString(aggregate.field));
+						}
+						if (aggregate.alias)
+						{
+							this.validateAlias(aggregate.alias);
+						}
 					}
-				} else if (typeof field === 'object' && field.type)
+					else
+					{
+						// It's a FieldReference object
+						const fieldRefStr = fieldRefToString(field as FieldReference);
+						if (fieldRefStr !== '*')
+						{
+							this.validateIdentifier(fieldRefStr);
+						}
+					}
+				}
+				else
 				{
-					this.validateIdentifier(field.type);
-					if (field.field)
+					// It's a string FieldReference
+					const fieldRefStr = fieldRefToString(field as FieldReference);
+					if (fieldRefStr !== '*')
 					{
-						this.validateIdentifier(field.field);
-					}
-					if (field.alias)
-					{
-						this.validateAlias(field.alias);
+						this.validateIdentifier(fieldRefStr);
 					}
 				}
 			}
@@ -205,7 +225,7 @@ export class PostgreSQLProvider implements DataProvider
 		{
 			for (const order of query.orderBy)
 			{
-				this.validateIdentifier(order.field);
+				this.validateIdentifier(fieldRefToString(order.field));
 				if (order.direction)
 				{
 					this.validateDirection(order.direction);
@@ -441,17 +461,36 @@ export class PostgreSQLProvider implements DataProvider
 		{
 			sql += query.fields.map(f =>
 			{
-				if (typeof f === 'string')
+				// Check if it's an Aggregate (has 'type' property that's a valid aggregate function)
+				if (typeof f === 'object' && f !== null && 'type' in f)
 				{
-					if (f === '*') return '*';
-					const safeFieldName = this.validateIdentifier(f);
+					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+					const fieldType = (f as any).type;
+					if (validAggregates.includes(fieldType))
+					{
+						// It's an Aggregate
+						const aggregate = f as Aggregate;
+						const safeType = this.validateIdentifier(aggregate.type);
+						const safeFieldName = this.validateIdentifier(fieldRefToString(aggregate.field));
+						const safeAlias = aggregate.alias ? this.validateAlias(aggregate.alias) : '';
+						return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+					}
+					else
+					{
+						// It's a FieldReference object
+						const fieldRefStr = fieldRefToString(f as FieldReference);
+						if (fieldRefStr === '*') return '*';
+						const safeFieldName = this.validateIdentifier(fieldRefStr);
+						return `"${safeFieldName}"`;
+					}
+				}
+				else
+				{
+					// It's a string FieldReference
+					const fieldRefStr = fieldRefToString(f as FieldReference);
+					if (fieldRefStr === '*') return '*';
+					const safeFieldName = this.validateIdentifier(fieldRefStr);
 					return `"${safeFieldName}"`;
-				} else
-				{
-					const safeType = this.validateIdentifier(f.type);
-					const safeFieldName = this.validateIdentifier(f.field);
-					const safeAlias = f.alias ? this.validateAlias(f.alias) : '';
-					return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
 				}
 			}).join(', ');
 		} else
@@ -489,7 +528,7 @@ export class PostgreSQLProvider implements DataProvider
 
 		if (query.groupBy && query.groupBy.length > 0)
 		{
-			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(f));
+			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
 			sql += ' GROUP BY ' + safeGroupBy.map(f => `"${f}"`).join(', ');
 		}
 
@@ -497,7 +536,7 @@ export class PostgreSQLProvider implements DataProvider
 		{
 			sql += ' ORDER BY ' + query.orderBy.map(o =>
 			{
-				const safeField = this.validateIdentifier(o.field);
+				const safeField = this.validateIdentifier(fieldRefToString(o.field));
 				const safeDirection = this.validateDirection(o.direction);
 				return `"${safeField}" ${safeDirection}`;
 			}).join(', ');
@@ -605,7 +644,7 @@ export class PostgreSQLProvider implements DataProvider
 			params.push(...subParams);
 			// Re-index parameters in subquery to match PostgreSQL numbering
 			const reindexedSql = this.reindexParameters(sql, paramIndex, subParams.length);
-			const safeFieldName = this.validateIdentifier(cond.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			return {
 				conditionSql: `"${safeFieldName}" ${cond.op} (${reindexedSql})`,
 				usedParamIndex: paramIndex + subParams.length
@@ -620,7 +659,7 @@ export class PostgreSQLProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(cond.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(cond.value);
 			return {
 				conditionSql: `"${safeFieldName}" ${cond.op} $${paramIndex}`,
@@ -635,7 +674,7 @@ export class PostgreSQLProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(cond.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values);
 			const placeholders = cond.values.map((_, i) => `$${paramIndex + i}`).join(', ');
 			return {
@@ -687,7 +726,7 @@ export class PostgreSQLProvider implements DataProvider
 		// Handle LIKE conditions: { like: { field, pattern } }
 		else if ('like' in cond)
 		{
-			const safeFieldName = this.validateIdentifier(cond.like.field);
+			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
 			return {
 				conditionSql: `"${safeFieldName}" LIKE $${paramIndex}`,
