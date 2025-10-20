@@ -2,7 +2,7 @@
 import { DataProvider } from './dataProvider';
 import { DefaultFieldMapper, EntityFieldMapper } from './entityFieldMapper';
 import { Middleware, runMiddlewares } from './middleware';
-import { Query, Condition, Aggregate, Join } from './queryObject';
+import { Query, Condition, Aggregate, Join, JoinSource, FieldReference, fieldRefToString } from './queryObject';
 import { getLogger } from './logger';
 import { DataGateway } from './dataGateway';
 
@@ -59,6 +59,233 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	}
 
 	/**
+	 * Creates a standardized error with logging
+	 * @param method The method name where the error occurred
+	 * @param message The error message
+	 * @param context Additional context for logging
+	 * @returns Error object
+	 */
+	private createError(method: string, message: string, context?: any): Error
+	{
+		const errorMsg = `[Repository.${method}] ${message}`;
+		this.logger.error(errorMsg, { table: this.table, ...context });
+		return new Error(errorMsg);
+	}
+
+	/**
+	 * Resolves a field reference (repository.field or table.field) to database format
+	 * Supports both string format and structured FieldReference object
+	 * @param fieldRef Field reference (string or object)
+	 * @param fallbackMapper Mapper to use when prefix cannot be identified
+	 * @returns Resolved field reference with table and database field name
+	 */
+	private resolveFieldReference(
+		fieldRef: FieldReference,
+		fallbackMapper?: EntityFieldMapper<any>
+	): { table?: string; field: string; repository?: string; mapper: EntityFieldMapper<any> }
+	{
+		// Handle structured FieldReference object
+		if (typeof fieldRef === 'object')
+		{
+			const { table, repository, field } = fieldRef;
+
+			if (repository)
+			{
+				// Repository reference
+				const referencedRepo = this.dataGateway.getRepository(repository);
+				if (referencedRepo)
+				{
+					return {
+						table: referencedRepo.getTable(),
+						field: referencedRepo.getMapper().toDbField(field),
+						repository,
+						mapper: referencedRepo.getMapper()
+					};
+				}
+
+				// Repository not found, warn and use fallback
+				this.logger.warn(`Repository '${repository}' not found for field '${field}'`);
+				const mapper = fallbackMapper || this.mapper;
+				return {
+					table: repository,
+					field: mapper.toDbField(field),
+					mapper
+				};
+			}
+
+			if (table)
+			{
+				// Direct table reference
+				const mapper = fallbackMapper || this.mapper;
+				return {
+					table,
+					field: mapper.toDbField(field),
+					mapper
+				};
+			}
+
+			// Simple field without prefix
+			const mapper = fallbackMapper || this.mapper;
+			return {
+				field: mapper.toDbField(field),
+				mapper
+			};
+		}
+
+		// Handle string format (backward compatibility)
+		if (!fieldRef.includes('.'))
+		{
+			// Simple field name without prefix
+			const mapper = fallbackMapper || this.mapper;
+			return {
+				field: mapper.toDbField(fieldRef),
+				mapper
+			};
+		}
+
+		const parts = fieldRef.split('.');
+		if (parts.length !== 2)
+		{
+			// Unexpected format, return as-is
+			this.logger.warn(`Unexpected field reference format: ${fieldRef}`);
+			return {
+				field: fieldRef,
+				mapper: fallbackMapper || this.mapper
+			};
+		}
+
+		let [tableOrRepoName, fieldName] = parts;
+
+		// Check if the prefix is a repository name
+		const referencedRepo = this.dataGateway.getRepository(tableOrRepoName);
+		if (referencedRepo)
+		{
+			// It's a repository name, use its table name and mapper
+			return {
+				table: referencedRepo.getTable(),
+				field: referencedRepo.getMapper().toDbField(fieldName),
+				repository: tableOrRepoName,
+				mapper: referencedRepo.getMapper()
+			};
+		}
+
+		// Direct table.field format
+		const mapper = fallbackMapper || this.mapper;
+		return {
+			table: tableOrRepoName,
+			field: mapper.toDbField(fieldName),
+			mapper
+		};
+	}
+
+	/**
+	 * Resolves JOIN source information (table name, mapper, and repository)
+	 * @param source JOIN source specification
+	 * @returns Resolved JOIN source information
+	 */
+	private resolveJoinSourceInfo(source: JoinSource): {
+		table: string;
+		mapper: EntityFieldMapper<any>;
+		repository?: Repository<any>;
+	}
+	{
+		if ('repository' in source)
+		{
+			const repo = this.dataGateway.getRepository(source.repository);
+			if (repo)
+			{
+				return {
+					table: repo.getTable(),
+					mapper: repo.getMapper(),
+					repository: repo
+				};
+			}
+
+			// Repository not found, log warning and use default
+			this.logger.warn(`Repository '${source.repository}' not found, using default mapper`);
+			return {
+				table: source.repository,
+				mapper: new DefaultFieldMapper()
+			};
+		}
+
+		// Direct table reference
+		return {
+			table: source.table,
+			mapper: new DefaultFieldMapper()
+		};
+	}
+
+	/**
+	 * Converts JOIN condition recursively, supporting complex nested conditions (AND/OR/NOT)
+	 * @param condition The JOIN ON condition to convert
+	 * @param joinMapper The mapper for the joined table (used for right-side fields)
+	 * @returns Converted condition with database field names
+	 */
+	private convertJoinCondition(condition: Condition, joinMapper: EntityFieldMapper<any>): Condition
+	{
+		if (!condition || typeof condition !== 'object') return condition;
+
+		const newCond = { ...condition } as Condition;
+
+		// Handle simple field comparison conditions
+		if ('field' in newCond && newCond.field !== undefined)
+		{
+			// Left side: use resolveFieldReference to handle repository.field or table.field format
+			const leftResolved = this.resolveFieldReference(newCond.field);
+			newCond.field = leftResolved.table ? `${leftResolved.table}.${leftResolved.field}` : leftResolved.field;
+
+			// Handle the right side of the condition (in the value)
+			if (newCond.op === '=' || newCond.op === '!=' || newCond.op === '>' || newCond.op === '<' || newCond.op === '>=' || newCond.op === '<=')
+			{
+				const valueStr = String(newCond.value);
+				if (valueStr.includes('.'))
+				{
+					// Use resolveFieldReference to handle repository.field or table.field format
+					const rightResolved = this.resolveFieldReference(valueStr, joinMapper);
+					newCond.value = rightResolved.table ? `${rightResolved.table}.${rightResolved.field}` : rightResolved.field;
+				}
+				else
+				{
+					// No table prefix, convert the entire value as a field name using join source's mapper
+					newCond.value = joinMapper.toDbField(valueStr);
+				}
+			}
+
+			// Handle subqueries in JOIN conditions
+			if ('subquery' in newCond && typeof newCond.subquery === 'object')
+			{
+				newCond.subquery = this.mapQueryToDb(newCond.subquery);
+			}
+		}
+
+		// Recursively handle compound conditions (AND/OR/NOT)
+		if ('and' in newCond && Array.isArray(newCond.and))
+		{
+			newCond.and = newCond.and.map(c => this.convertJoinCondition(c, joinMapper));
+		}
+		if ('or' in newCond && Array.isArray(newCond.or))
+		{
+			newCond.or = newCond.or.map(c => this.convertJoinCondition(c, joinMapper));
+		}
+		if ('not' in newCond && typeof newCond.not === 'object')
+		{
+			newCond.not = this.convertJoinCondition(newCond.not, joinMapper);
+		}
+		if ('like' in newCond && typeof newCond.like === 'object' && newCond.like !== null)
+		{
+			if ('field' in newCond.like && newCond.like.field !== undefined)
+			{
+				// Support repository.field or table.field format in LIKE conditions
+				const resolved = this.resolveFieldReference(newCond.like.field);
+				newCond.like.field = resolved.table ? `${resolved.table}.${resolved.field}` : resolved.field;
+			}
+		}
+
+		return newCond;
+	}
+
+	/**
 	 * Maps a query object from entity-centric fields and values to database-centric
 	 * column names using the repository's mapper. This includes fields, conditions,
 	 * ordering, and values for insertion/updates.
@@ -68,18 +295,23 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	private mapQueryToDb(query: Query): Query
 	{
 		// Helper function to convert fields and aggregates
-		const convertField = (field: string | Aggregate): string | Aggregate =>
+		const convertField = (field: FieldReference | Aggregate): string | Aggregate =>
 		{
-			if (typeof field === 'string')
+			if (typeof field === 'string' || (typeof field === 'object' && 'field' in field && !('type' in field)))
 			{
-				return this.mapper.toDbField(field);
+				// Handle FieldReference (string or object format)
+				const resolved = this.resolveFieldReference(field as FieldReference);
+				return resolved.table ? `${resolved.table}.${resolved.field}` : resolved.field;
 			}
-			if (typeof field === 'object' && field !== null)
+			if (typeof field === 'object' && field !== null && 'type' in field)
 			{
+				// Aggregate
 				const newField = { ...field };
 				if (newField.field)
 				{
-					newField.field = this.mapper.toDbField(newField.field);
+					// Handle repository.field or table.field format in aggregate
+					const resolved = this.resolveFieldReference(newField.field);
+					newField.field = resolved.table ? `${resolved.table}.${resolved.field}` : resolved.field;
 				}
 				return newField;
 			}
@@ -92,9 +324,12 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			if (!cond || typeof cond !== 'object') return cond;
 
 			const newCond = { ...cond } as Condition;
-			if ('field' in newCond && typeof newCond.field === 'string')
+			if ('field' in newCond && newCond.field !== undefined)
 			{
-				newCond.field = this.mapper.toDbField(newCond.field);
+				// Support repository.field or table.field format in conditions
+				const resolved = this.resolveFieldReference(newCond.field);
+				newCond.field = resolved.table ? `${resolved.table}.${resolved.field}` : resolved.field;
+
 				if ('subquery' in newCond && typeof newCond.subquery === 'object')
 				{
 					newCond.subquery = this.mapQueryToDb(newCond.subquery);
@@ -115,9 +350,11 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			}
 			if ('like' in newCond && typeof newCond.like === 'object' && newCond.like !== null)
 			{
-				if ('field' in newCond.like && typeof newCond.like.field === 'string')
+				if ('field' in newCond.like && newCond.like.field !== undefined)
 				{
-					newCond.like.field = this.mapper.toDbField(newCond.like.field);
+					// Support repository.field or table.field format in LIKE conditions
+					const resolved = this.resolveFieldReference(newCond.like.field);
+					newCond.like.field = resolved.table ? `${resolved.table}.${resolved.field}` : resolved.field;
 				}
 			}
 
@@ -127,92 +364,15 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		// Helper function to convert JOIN conditions
 		const convertJoinOn = (join: Join): Join =>
 		{
-			// Determine the repository and mapper for the JOIN source
-			let repo: Repository<any> | undefined;
-			let mapper: EntityFieldMapper<any> = this.mapper; // Default to main repository's mapper
-			let table: string | undefined;
-
-			// Type guard to check if source has repository property
-			if ('repository' in join.source)
-			{
-				repo = this.dataGateway.getRepository(join.source.repository);
-				if (repo)
-				{
-					mapper = repo.getMapper();
-					table = repo.getTable();
-				}
-			}
-			else if ('table' in join.source)
-			{
-				// Direct table reference, use main repository's mapper
-				table = join.source.table;
-			}
-
-			if (!table)
-			{
-				this.logger.error(`[Repository.mapQueryToDb] Unable to determine table for JOIN source: ${JSON.stringify(join.source)}`);
-				throw new Error(`[Repository.mapQueryToDb] Unable to determine table for JOIN source: ${JSON.stringify(join.source)}`);
-			}
+			// Use the helper to resolve JOIN source information
+			const { table, mapper } = this.resolveJoinSourceInfo(join.source);
 
 			// Create a new Join object instead of modifying the original
 			const newJoin: Join = {
 				type: join.type,
 				source: { table },
-				on: { ...join.on }
+				on: this.convertJoinCondition(join.on, mapper)
 			};
-
-			// Convert the ON condition
-			// Important: Only support simple field comparison for now
-			// The left side uses the main repository's mapper, and the right side uses the join source's mapper
-			if ('field' in newJoin.on && typeof newJoin.on.field === 'string')
-			{
-				// Use the repository's mapper to convert the left field
-				newJoin.on.field = this.mapper.toDbField(newJoin.on.field);
-
-				// Use the join source's mapper to convert the right field (in the value)
-				if (newJoin.on.op === '=' || newJoin.on.op === '!=' || newJoin.on.op === '>' || newJoin.on.op === '<' || newJoin.on.op === '>=' || newJoin.on.op === '<=')
-				{
-					// Handle table.field or repository.field format in value
-					const valueStr = String(newJoin.on.value);
-					if (valueStr.includes('.'))
-					{
-						// Split table/repository.field format
-						const parts = valueStr.split('.');
-						if (parts.length === 2)
-						{
-							let [tableOrRepoName, fieldName] = parts;
-
-							// Check if the prefix is a repository name, if so, convert to table name
-							const referencedRepo = this.dataGateway.getRepository(tableOrRepoName);
-							if (referencedRepo)
-							{
-								// It's a repository name, use its table name
-								tableOrRepoName = referencedRepo.getTable();
-								// Use the referenced repository's mapper to convert the field
-								const referencedMapper = referencedRepo.getMapper();
-								fieldName = referencedMapper.toDbField(fieldName);
-							}
-							else
-							{
-								// It's a direct table name, use the join source's mapper to convert the field
-								fieldName = mapper.toDbField(fieldName);
-							}
-
-							newJoin.on.value = `${tableOrRepoName}.${fieldName}`;
-						}
-						else
-						{
-							// If format is unexpected, keep original value
-							newJoin.on.value = valueStr;
-						}
-					}
-					else
-					{
-						// No table prefix, convert the entire value as a field name
-						newJoin.on.value = mapper.toDbField(valueStr);
-					}
-				}
-			}
 
 			return newJoin;
 		}
@@ -235,10 +395,22 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		}
 		if (newQuery.orderBy)
 		{
-			newQuery.orderBy = newQuery.orderBy.map(order => ({
-				...order,
-				field: this.mapper.toDbField(order.field)
-			}));
+			newQuery.orderBy = newQuery.orderBy.map(order =>
+			{
+				const { table, field } = this.resolveFieldReference(order.field);
+				return {
+					...order,
+					field: table ? `${table}.${field}` : field
+				};
+			});
+		}
+		if (newQuery.groupBy)
+		{
+			newQuery.groupBy = newQuery.groupBy.map(field =>
+			{
+				const resolved = this.resolveFieldReference(field);
+				return resolved.table ? `${resolved.table}.${resolved.field}` : resolved.field;
+			});
 		}
 		if (newQuery.values && typeof newQuery.values === 'object' && !Array.isArray(newQuery.values))
 		{
@@ -253,6 +425,175 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	}
 
 	/**
+	 * Detects field conflicts in JOIN queries where the same field name exists in multiple tables.
+	 * Issues warnings when conflicts are detected and provides suggestions for using table-prefixed fields.
+	 * @param query The query object to check for field conflicts
+	 */
+	private detectFieldConflicts(query: Partial<Query>): void
+	{
+		// Only check for queries with JOINs
+		if (!query.joins || query.joins.length === 0) return;
+
+		// Helper function to check if a field has a prefix (table or repository)
+		const hasPrefix = (field: FieldReference | Aggregate): boolean =>
+		{
+			if (typeof field === 'string')
+			{
+				// String format: check for dot notation
+				return field.includes('.');
+			}
+			else if ('type' in field)
+			{
+				// Aggregate
+				const fieldRef = field.field;
+				if (typeof fieldRef === 'string')
+				{
+					return fieldRef.includes('.');
+				}
+				else if (typeof fieldRef === 'object')
+				{
+					return !!(fieldRef.table || fieldRef.repository);
+				}
+			}
+			else
+			{
+				// FieldReference object
+				return !!(field.table || field.repository);
+			}
+			return false;
+		};
+
+		// If fields are specified and ALL fields have prefixes, no need to check
+		if (query.fields && query.fields.length > 0)
+		{
+			const allHavePrefix = query.fields.every(hasPrefix);
+			if (allHavePrefix)
+			{
+				// All fields are properly prefixed, no conflict detection needed
+				return;
+			}
+		}
+
+		// Build a map of field names to tables that contain them
+		const fieldToTables = new Map<string, string[]>();
+
+		// Helper function to extract field names from a mapper
+		const getFieldsFromMapper = (mapper: EntityFieldMapper<any>): string[] =>
+		{
+			// Get all entity fields by checking what the mapper can convert
+			// We'll try common field names and see what it produces
+			const sampleFields = ['id', 'name', 'status', 'createdAt', 'updatedAt'];
+			const fields = new Set<string>();
+
+			for (const field of sampleFields)
+			{
+				const dbField = mapper.toDbField(field);
+				if (dbField !== field)
+				{
+					// The mapper recognized this field
+					fields.add(field);
+				}
+			}
+
+			return Array.from(fields);
+		};
+
+		// Add fields from the main table
+		const mainFields = getFieldsFromMapper(this.mapper);
+		for (const field of mainFields)
+		{
+			if (!fieldToTables.has(field))
+			{
+				fieldToTables.set(field, []);
+			}
+			fieldToTables.get(field)!.push(this.table);
+		}
+
+		// Add fields from joined tables
+		for (const join of query.joins)
+		{
+			const { table, mapper } = this.resolveJoinSourceInfo(join.source);
+			const joinedFields = getFieldsFromMapper(mapper);
+
+			for (const field of joinedFields)
+			{
+				if (!fieldToTables.has(field))
+				{
+					fieldToTables.set(field, []);
+				}
+				fieldToTables.get(field)!.push(table);
+			}
+		}
+
+		// Collect unprefixed fields from the query
+		const unprefixedFields = new Set<string>();
+		if (query.fields)
+		{
+			for (const field of query.fields)
+			{
+				if (!hasPrefix(field))
+				{
+					// Extract the field name
+					if (typeof field === 'string')
+					{
+						unprefixedFields.add(field);
+					}
+					else if ('type' in field)
+					{
+						// Aggregate
+						const fieldRef = field.field;
+						if (typeof fieldRef === 'string')
+						{
+							unprefixedFields.add(fieldRef);
+						}
+						else if (typeof fieldRef === 'object')
+						{
+							unprefixedFields.add(fieldRef.field);
+						}
+					}
+					else
+					{
+						// FieldReference object
+						unprefixedFields.add(field.field);
+					}
+				}
+			}
+		}
+
+		// Detect conflicts
+		const conflicts: Array<{ field: string; tables: string[] }> = [];
+
+		for (const [field, tables] of fieldToTables.entries())
+		{
+			if (tables.length > 1)
+			{
+				// This field exists in multiple tables
+				// Only warn if:
+				// 1. No specific fields were requested (SELECT *), or
+				// 2. This field was explicitly requested without table/repository prefix
+				if (!query.fields || unprefixedFields.has(field))
+				{
+					conflicts.push({ field, tables });
+				}
+			}
+		}
+
+		// Issue warnings for detected conflicts
+		if (conflicts.length > 0)
+		{
+			for (const conflict of conflicts)
+			{
+				const tablesStr = conflict.tables.join("', '");
+				this.logger.warn(
+					`Field conflict detected: Field '${conflict.field}' exists in multiple tables: ['${tablesStr}']. ` +
+					`Consider using table-prefixed fields like tableField('${conflict.tables[0]}', '${conflict.field}') ` +
+					`to avoid ambiguity.`
+				);
+			}
+		}
+	}
+
+	/**
 	 * Query an array of objects
 	 * @param query Query conditions, no need to specify type and table
 	 * @returns Array of queried result objects
@@ -262,22 +603,147 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		try
 		{
 			this.logger.debug(`Executing find query`, { table: this.table, query });
+
+			// Detect field conflicts in JOIN queries
+			if (query?.joins && query.joins.length > 0)
+			{
+				this.detectFieldConflicts(query);
+			}
+
 			const dbQuery = this.mapQueryToDb({ ...query, type: 'SELECT', table: this.table });
 			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
 			{
 				return this.provider.query<Record<string, any>>(q);
 			});
 
-			const results = await Promise.all(rows?.map(row => this.mapper.fromDb(row)) ?? []);
-			this.logger.debug(`Find query completed`, { table: this.table, resultCount: results.length });
-			return results;
+			// If the query contains JOINs, we need to handle field mapping for multiple tables
+			if (query?.joins && query.joins.length > 0)
+			{
+				const results = await Promise.all(rows?.map(row => this.mapJoinedRowFromDb(row, query.joins!)) ?? []);
+				this.logger.debug(`Find query with JOINs completed`, { table: this.table, resultCount: results.length });
+				return results;
+			}
+			else
+			{
+				// Simple query without JOINs, use the repository's mapper
+				const results = await Promise.all(rows?.map(row => this.mapper.fromDb(row)) ?? []);
+				this.logger.debug(`Find query completed`, { table: this.table, resultCount: results.length });
+				return results;
+			}
 		}
 		catch (err)
 		{
-			const errorMsg = `[Repository.find] ${err instanceof Error ? err.message : String(err)}`;
-			this.logger.error(errorMsg, { table: this.table, query });
-			throw new Error(errorMsg);
+			throw this.createError('find', err instanceof Error ? err.message : String(err), { query });
 		}
+	}
+
+	/**
+	 * Maps a joined row from database format to entity format,
+	 * handling fields from multiple tables with their respective mappers.
+	 * @param dbRow The database row containing fields from multiple tables
+	 * @param joins The JOIN configurations from the query
+	 * @returns The mapped entity object
+	 */
+	private async mapJoinedRowFromDb(dbRow: Record<string, any>, joins: Join[]): Promise<T>
+	{
+		const result: Record<string, any> = {};
+
+		// Build a map of table names to their mappers
+		const tableMappers = new Map<string, EntityFieldMapper<any>>();
+		tableMappers.set(this.table, this.mapper);
+
+		// Add mappers for joined tables
+		for (const join of joins)
+		{
+			let tableName: string;
+			let mapper: EntityFieldMapper<any>;
+
+			if ('repository' in join.source)
+			{
+				const repo = this.dataGateway.getRepository(join.source.repository);
+				if (repo)
+				{
+					tableName = repo.getTable();
+					mapper = repo.getMapper();
+				}
+				else
+				{
+					// If repository not found, use default mapper
+					tableName = join.source.repository;
+					mapper = new DefaultFieldMapper();
+				}
+			}
+			else
+			{
+				// Direct table reference, use default mapper
+				tableName = join.source.table;
+				mapper = new DefaultFieldMapper();
+			}
+
+			tableMappers.set(tableName, mapper);
+		}
+
+		// Process each column in the database row
+		for (const dbColumn in dbRow)
+		{
+			let mapped = false;
+
+			// Try to match the column to a table-prefixed format (table.column)
+			// Many databases return columns with table prefixes when there are JOINs
+			if (dbColumn.includes('.'))
+			{
+				const parts = dbColumn.split('.');
+				if (parts.length === 2)
+				{
+					const [tableName, columnName] = parts;
+					const mapper = tableMappers.get(tableName);
+					if (mapper)
+					{
+						const fieldName = mapper.fromDbField(columnName);
+						result[`${tableName}.${fieldName}`] = dbRow[dbColumn];
+						mapped = true;
+					}
+				}
+			}
+
+			// If not mapped yet, try each mapper to see if it can handle this column
+			if (!mapped)
+			{
+				// First try the main repository's mapper
+				const mainFieldName = this.mapper.fromDbField(dbColumn);
+				if (mainFieldName !== dbColumn)
+				{
+					// The mapper recognized this column
+					result[mainFieldName] = dbRow[dbColumn];
+					mapped = true;
+				}
+				else
+				{
+					// Try other mappers
+					for (const [tableName, mapper] of tableMappers.entries())
+					{
+						if (tableName === this.table) continue; // Already tried
+
+						const fieldName = mapper.fromDbField(dbColumn);
+						if (fieldName !== dbColumn)
+						{
+							// This mapper recognized the column
+							result[`${tableName}.${fieldName}`] = dbRow[dbColumn];
+							mapped = true;
+							break;
+						}
+					}
+				}
+			}
+
+			// If still not mapped, keep the original column name
+			if (!mapped)
+			{
+				result[dbColumn] = dbRow[dbColumn];
+			}
+		}
+
+		return result as T;
 	}
 
 	/**
@@ -336,7 +802,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		}
 		catch (err)
 		{
-			throw new Error(`[Repository.count] ${err instanceof Error ? err.message : String(err)}`);
+			throw this.createError('count', err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -372,7 +838,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		}
 		catch (err)
 		{
-			throw new Error(`[Repository.sum] ${err instanceof Error ? err.message : String(err)}`);
+			throw this.createError('sum', err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -403,9 +869,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		}
 		catch (err)
 		{
-			const errorMsg = `[Repository.insert] ${err instanceof Error ? err.message : String(err)}`;
-			this.logger.error(errorMsg, { table: this.table });
-			throw new Error(errorMsg);
+			throw this.createError('insert', err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -435,7 +899,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		}
 		catch (err)
 		{
-			throw new Error(`[Repository.update] ${err instanceof Error ? err.message : String(err)}`);
+			throw this.createError('update', err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -462,7 +926,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		}
 		catch (err)
 		{
-			throw new Error(`[Repository.delete] ${err instanceof Error ? err.message : String(err)}`);
+			throw this.createError('delete', err instanceof Error ? err.message : String(err));
 		}
 	}
 }
