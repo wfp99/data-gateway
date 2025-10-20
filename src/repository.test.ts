@@ -781,4 +781,894 @@ describe('Repository - Unit Tests', () =>
 			});
 		});
 	});
+
+	describe('SELECT Fields with table/repository Prefix', () =>
+	{
+		it('should handle repository.field format in SELECT fields', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users_table',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					userName: 'user_name'
+				})
+			);
+
+			const orderRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'orders_table',
+				new MappingFieldMapper({
+					orderId: 'order_id',
+					orderDate: 'order_date',
+					userId: 'user_id' // Add this mapping for the JOIN condition
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'orders') return orderRepo;
+				if (name === 'users') return userRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Query with repository.field format in SELECT fields
+			await userRepo.find({
+				fields: ['userId', 'userName', 'orders.orderId', 'orders.orderDate'],
+				joins: [
+					{
+						type: 'LEFT',
+						source: { repository: 'orders' },
+						on: { field: 'userId', op: '=', value: 'orders.userId' }
+					}
+				]
+			});
+
+			// Verify that fields with repository prefix are correctly mapped
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'users_table',
+				fields: ['user_id', 'user_name', 'orders_table.order_id', 'orders_table.order_date'],
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'orders_table' },
+						on: { field: 'user_id', op: '=', value: 'orders_table.user_id' }
+					}
+				]
+			});
+		});
+
+		it('should handle table.field format in SELECT fields', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					userName: 'user_name'
+				})
+			);
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Query with table.field format in SELECT fields (direct table reference)
+			await userRepo.find({
+				fields: ['userId', 'userName', 'orders.order_id'],
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'orders' },
+						on: { field: 'userId', op: '=', value: 'orders.user_id' }
+					}
+				]
+			});
+
+			// When using direct table name, the field part is mapped using main repo's mapper
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'users',
+				fields: ['user_id', 'user_name', 'orders.order_id'],
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'orders' },
+						on: { field: 'user_id', op: '=', value: 'orders.user_id' }
+					}
+				]
+			});
+		});
+
+		it('should handle repository.field in aggregate functions', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users_table',
+				new MappingFieldMapper({
+					userId: 'user_id'
+				})
+			);
+
+			const orderRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'orders_table',
+				new MappingFieldMapper({
+					orderId: 'order_id',
+					orderAmount: 'order_amount',
+					userId: 'user_id' // Add this mapping for the JOIN condition
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'orders') return orderRepo;
+				if (name === 'users') return userRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Query with repository.field in aggregate functions
+			await userRepo.find({
+				fields: [
+					'userId',
+					{ type: 'COUNT', field: 'orders.orderId', alias: 'totalOrders' },
+					{ type: 'SUM', field: 'orders.orderAmount', alias: 'totalAmount' }
+				],
+				joins: [
+					{
+						type: 'LEFT',
+						source: { repository: 'orders' },
+						on: { field: 'userId', op: '=', value: 'orders.userId' }
+					}
+				],
+				groupBy: ['userId']
+			});
+
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'users_table',
+				fields: [
+					'user_id',
+					{ type: 'COUNT', field: 'orders_table.order_id', alias: 'totalOrders' },
+					{ type: 'SUM', field: 'orders_table.order_amount', alias: 'totalAmount' }
+				],
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'orders_table' },
+						on: { field: 'user_id', op: '=', value: 'orders_table.user_id' }
+					}
+				],
+				groupBy: ['user_id']
+			});
+		});
+	});
+
+	describe('JOIN Query Result Mapping', () =>
+	{
+		it('should map joined query results from multiple tables correctly', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					userName: 'user_name'
+				})
+			);
+
+			const orderRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'orders',
+				new MappingFieldMapper({
+					orderId: 'order_id',
+					orderDate: 'order_date'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'orders') return orderRepo;
+				if (name === 'users') return userRepo;
+				return undefined;
+			});
+
+			// Simulate database result with columns from both tables
+			// When there are ambiguous column names, they might come from different tables
+			const mockRows = [
+				{
+					user_id: 1,
+					user_name: 'John',
+					order_id: 101,
+					order_date: '2023-01-15'
+				},
+				{
+					user_id: 2,
+					user_name: 'Jane',
+					order_id: 102,
+					order_date: '2023-01-16'
+				}
+			];
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: mockRows,
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			const results = await userRepo.find({
+				joins: [
+					{
+						type: 'INNER',
+						source: { repository: 'orders' },
+						on: { field: 'userId', op: '=', value: 'orders.orderId' }
+					}
+				]
+			});
+
+			// Verify that the results are mapped correctly:
+			// - Main table fields (users) should be mapped using user repo's mapper
+			// - Since order columns have different names (order_id, order_date),
+			//   they will be identified by the order repo's mapper and prefixed with table name
+			expect(results).toHaveLength(2);
+			expect(results[0]).toEqual({
+				userId: 1,
+				userName: 'John',
+				'orders.orderId': 101,
+				'orders.orderDate': '2023-01-15'
+			});
+			expect(results[1]).toEqual({
+				userId: 2,
+				userName: 'Jane',
+				'orders.orderId': 102,
+				'orders.orderDate': '2023-01-16'
+			});
+		});
+
+		it('should handle table-prefixed columns in joined query results', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					userName: 'user_name'
+				})
+			);
+
+			const orderRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'orders',
+				new MappingFieldMapper({
+					orderId: 'order_id'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'orders') return orderRepo;
+				if (name === 'users') return userRepo;
+				return undefined;
+			});
+
+			// Some databases return columns with table prefixes
+			const mockRows = [
+				{
+					'users.user_id': 1,
+					'users.user_name': 'John',
+					'orders.order_id': 101
+				}
+			];
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: mockRows,
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			const results = await userRepo.find({
+				joins: [
+					{
+						type: 'INNER',
+						source: { repository: 'orders' },
+						on: { field: 'userId', op: '=', value: 'orders.orderId' }
+					}
+				]
+			});
+
+			// Verify that table-prefixed columns are mapped correctly
+			expect(results).toHaveLength(1);
+			expect(results[0]).toEqual({
+				'users.userId': 1,
+				'users.userName': 'John',
+				'orders.orderId': 101
+			});
+		});
+
+		it('should handle mixed table join with default mapper', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					userName: 'user_name'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockReturnValue(undefined);
+
+			// Simulate database result with columns from main table and a direct table join
+			const mockRows = [
+				{
+					user_id: 1,
+					user_name: 'John',
+					profile_bio: 'Software developer'
+				}
+			];
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: mockRows,
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			const results = await userRepo.find({
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'profiles' }, // Direct table reference
+						on: { field: 'userId', op: '=', value: 'profiles.user_id' }
+					}
+				]
+			});
+
+			// Verify that:
+			// - Main table fields are mapped using user repo's mapper
+			// - Direct table join fields use default mapper (no change)
+			expect(results).toHaveLength(1);
+			expect(results[0]).toEqual({
+				userId: 1,
+				userName: 'John',
+				profile_bio: 'Software developer'
+			});
+		});
+	});
+
+	describe('Complex JOIN ON Conditions', () =>
+	{
+		it('should handle AND conditions in JOIN ON clause', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					companyId: 'company_id'
+				})
+			);
+
+			const orderRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'orders',
+				new MappingFieldMapper({
+					customerId: 'customer_id',
+					companyId: 'company_id',
+					status: 'order_status'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'orders') return orderRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// JOIN with AND condition
+			await userRepo.find({
+				joins: [
+					{
+						type: 'INNER',
+						source: { repository: 'orders' },
+						on: {
+							and: [
+								{ field: 'userId', op: '=', value: 'orders.customerId' },
+								{ field: 'companyId', op: '=', value: 'orders.companyId' }
+							]
+						}
+					}
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'users',
+				joins: [
+					{
+						type: 'INNER',
+						source: { table: 'orders' },
+						on: {
+							and: [
+								{ field: 'user_id', op: '=', value: 'orders.customer_id' },
+								{ field: 'company_id', op: '=', value: 'orders.company_id' }
+							]
+						}
+					}
+				]
+			});
+		});
+
+		it('should handle OR conditions in JOIN ON clause', async () =>
+		{
+			const productRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'products',
+				new MappingFieldMapper({
+					productId: 'product_id',
+					legacyId: 'legacy_id'
+				})
+			);
+
+			const inventoryRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'inventory',
+				new MappingFieldMapper({
+					productRef: 'product_ref',
+					oldProductRef: 'old_product_ref'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'inventory') return inventoryRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// JOIN with OR condition (for legacy data compatibility)
+			await productRepo.find({
+				joins: [
+					{
+						type: 'LEFT',
+						source: { repository: 'inventory' },
+						on: {
+							or: [
+								{ field: 'productId', op: '=', value: 'inventory.productRef' },
+								{ field: 'legacyId', op: '=', value: 'inventory.oldProductRef' }
+							]
+						}
+					}
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'products',
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'inventory' },
+						on: {
+							or: [
+								{ field: 'product_id', op: '=', value: 'inventory.product_ref' },
+								{ field: 'legacy_id', op: '=', value: 'inventory.old_product_ref' }
+							]
+						}
+					}
+				]
+			});
+		});
+
+		it('should handle nested AND/OR conditions in JOIN ON clause', async () =>
+		{
+			const accountRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'accounts',
+				new MappingFieldMapper({
+					accountId: 'account_id',
+					ownerId: 'owner_id',
+					status: 'account_status'
+				})
+			);
+
+			const accessRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'access_grants',
+				new MappingFieldMapper({
+					accountRef: 'account_ref',
+					userId: 'user_id',
+					grantStatus: 'grant_status'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'access') return accessRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Complex nested condition: (accountId = ref AND (ownerId = userId OR status = grantStatus))
+			await accountRepo.find({
+				joins: [
+					{
+						type: 'LEFT',
+						source: { repository: 'access' },
+						on: {
+							and: [
+								{ field: 'accountId', op: '=', value: 'access.accountRef' },
+								{
+									or: [
+										{ field: 'ownerId', op: '=', value: 'access.userId' },
+										{ field: 'status', op: '=', value: 'access.grantStatus' }
+									]
+								}
+							]
+						}
+					}
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'accounts',
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'access_grants' },
+						on: {
+							and: [
+								{ field: 'account_id', op: '=', value: 'access_grants.account_ref' },
+								{
+									or: [
+										{ field: 'owner_id', op: '=', value: 'access_grants.user_id' },
+										{ field: 'account_status', op: '=', value: 'access_grants.grant_status' }
+									]
+								}
+							]
+						}
+					}
+				]
+			});
+		});
+
+		it('should handle NOT conditions in JOIN ON clause', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({
+					userId: 'user_id',
+					isActive: 'is_active'
+				})
+			);
+
+			const blockRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'blocked_users',
+				new MappingFieldMapper({
+					blockedUserId: 'blocked_user_id',
+					isBlocked: 'is_blocked'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'blocked') return blockRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// JOIN with NOT condition
+			await userRepo.find({
+				joins: [
+					{
+						type: 'LEFT',
+						source: { repository: 'blocked' },
+						on: {
+							not: {
+								field: 'userId',
+								op: '=',
+								value: 'blocked.blockedUserId'
+							}
+						}
+					}
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'users',
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'blocked_users' },
+						on: {
+							not: {
+								field: 'user_id',
+								op: '=',
+								value: 'blocked_users.blocked_user_id'
+							}
+						}
+					}
+				]
+			});
+		});
+
+		it('should handle LIKE conditions in JOIN ON clause', async () =>
+		{
+			const searchRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'search_index',
+				new MappingFieldMapper({
+					searchTerm: 'search_term'
+				})
+			);
+
+			const productRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'products',
+				new MappingFieldMapper({
+					productName: 'product_name'
+				})
+			);
+
+			vi.mocked(mockGateway.getRepository).mockImplementation((name: string) =>
+			{
+				if (name === 'products') return productRepo;
+				return undefined;
+			});
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// JOIN with LIKE condition
+			await searchRepo.find({
+				joins: [
+					{
+						type: 'LEFT',
+						source: { repository: 'products' },
+						on: {
+							like: {
+								field: 'searchTerm',
+								pattern: '%product%'
+							}
+						}
+					}
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalledWith({
+				type: 'SELECT',
+				table: 'search_index',
+				joins: [
+					{
+						type: 'LEFT',
+						source: { table: 'products' },
+						on: {
+							like: {
+								field: 'search_term',
+								pattern: '%product%'
+							}
+						}
+					}
+				]
+			});
+		});
+	});
+
+	describe('FieldReference Type Safety', () =>
+	{
+		it('should support string format for backward compatibility', async () =>
+		{
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Old string format still works
+			await repository.find({
+				fields: ['id', 'name'],
+				where: { field: 'status', op: '=', value: 'active' },
+				orderBy: [{ field: 'createdAt', direction: 'DESC' }]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalled();
+		});
+
+		it('should support object format with table prefix', async () =>
+		{
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// New object format with table prefix
+			await repository.find({
+				fields: [
+					{ table: 'test_table', field: 'id' },
+					{ table: 'test_table', field: 'name' }
+				],
+				where: {
+					field: { table: 'test_table', field: 'status' },
+					op: '=',
+					value: 'active'
+				}
+			});
+
+			expect(mockProvider.query).toHaveBeenCalled();
+		});
+
+		it('should support object format with repository prefix', async () =>
+		{
+			const userRepo = new Repository(
+				mockGateway,
+				mockProvider,
+				'users',
+				new MappingFieldMapper({ userId: 'user_id', userName: 'user_name' })
+			);
+
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Object format with repository prefix
+			await userRepo.find({
+				fields: [
+					{ repository: 'user', field: 'userId' },
+					{ repository: 'user', field: 'userName' }
+				],
+				where: {
+					field: { repository: 'user', field: 'userId' },
+					op: '>',
+					value: 100
+				}
+			});
+
+			const call = vi.mocked(mockProvider.query).mock.calls[0][0];
+			// With repository prefix, fields become "repository.field" format
+			expect(call.fields).toContain('user.user_id');
+			expect(call.fields).toContain('user.user_name');
+			expect(call.where).toEqual({
+				field: 'user.user_id',
+				op: '>',
+				value: 100
+			});
+		});
+
+		it('should support mixed format in same query', async () =>
+		{
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Mix string and object formats
+			await repository.find({
+				fields: [
+					'id',  // String format
+					{ table: 'test_table', field: 'name' }  // Object format
+				],
+				where: {
+					and: [
+						{ field: 'status', op: '=', value: 'active' },  // String
+						{ field: { table: 'test_table', field: 'verified' }, op: '=', value: true }  // Object
+					]
+				}
+			});
+
+			expect(mockProvider.query).toHaveBeenCalled();
+		});
+
+		it('should support FieldReference in aggregates', async () =>
+		{
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Object format in aggregates
+			await repository.find({
+				fields: [
+					{
+						type: 'COUNT',
+						field: { table: 'test_table', field: 'id' },
+						alias: 'totalCount'
+					},
+					{
+						type: 'AVG',
+						field: { repository: 'test', field: 'score' },
+						alias: 'avgScore'
+					}
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalled();
+		});
+
+		it('should support FieldReference in GROUP BY', async () =>
+		{
+			vi.mocked(mockProvider.query).mockResolvedValue({
+				rows: [],
+				affectedRows: 0,
+				insertId: 0
+			});
+
+			// Object format in GROUP BY
+			await repository.find({
+				fields: ['category', { type: 'COUNT', field: 'id', alias: 'count' }],
+				groupBy: [
+					{ table: 'test_table', field: 'category' },
+					{ table: 'test_table', field: 'status' }
+				]
+			});
+
+			expect(mockProvider.query).toHaveBeenCalled();
+		});
+	});
 });
