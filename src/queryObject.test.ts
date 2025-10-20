@@ -170,22 +170,22 @@ describe('QueryObject - Type Tests', () =>
 			const joins: Join[] = [
 				{
 					type: 'INNER',
-					table: 'user_profiles',
+					source: { table: 'user_profiles' },
 					on: { field: 'user_id', op: '=', value: 'users.id' }
 				},
 				{
 					type: 'LEFT',
-					table: 'user_settings',
+					source: { table: 'user_settings' },
 					on: { field: 'user_id', op: '=', value: 'users.id' }
 				},
 				{
 					type: 'RIGHT',
-					table: 'user_roles',
+					source: { table: 'user_roles' },
 					on: { field: 'user_id', op: '=', value: 'users.id' }
 				},
 				{
 					type: 'FULL',
-					table: 'user_logs',
+					source: { table: 'user_logs' },
 					on: { field: 'user_id', op: '=', value: 'users.id' }
 				},
 			];
@@ -244,12 +244,12 @@ describe('QueryObject - Type Tests', () =>
 				joins: [
 					{
 						type: 'LEFT',
-						table: 'user_profiles',
+						source: { table: 'user_profiles' },
 						on: { field: 'user_id', op: '=', value: 'users.id' }
 					},
 					{
 						type: 'INNER',
-						table: 'user_roles',
+						source: { table: 'user_roles' },
 						on: { field: 'user_id', op: '=', value: 'users.id' }
 					}
 				],
@@ -374,12 +374,12 @@ describe('QueryObject - Type Tests', () =>
 				joins: [
 					{
 						type: 'INNER',
-						table: 'customers',
+						source: { table: 'customers' },
 						on: { field: 'customer_id', op: '=', value: 'orders.customer_id' }
 					},
 					{
 						type: 'LEFT',
-						table: 'order_items',
+						source: { table: 'order_items' },
 						on: { field: 'order_id', op: '=', value: 'orders.id' }
 					}
 				],
