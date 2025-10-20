@@ -72,7 +72,7 @@ export class SQLiteProvider implements DataProvider
 
 	/**
 	 * Validate SQL identifiers (table names, field names, etc.)
-	 * Only allows letters, numbers, underscores, and must start with a letter
+	 * Only allows letters, numbers, underscores, and dots (for table.field format)
 	 */
 	private validateIdentifier(identifier: string): string
 	{
@@ -83,9 +83,9 @@ export class SQLiteProvider implements DataProvider
 			this.logger.error('Invalid identifier: empty or non-string', { identifier });
 			throw new Error('Invalid identifier: empty or non-string');
 		}
-		// Allow letters at the beginning, followed by letters, numbers, underscores
-		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-		if (!pattern.test(identifier) || identifier.length > 64)
+		// Allow letters at the beginning, followed by letters, numbers, underscores, and dots (for table.field)
+		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)?$/;
+		if (!pattern.test(identifier) || identifier.length > 128)
 		{
 			this.logger.error('Invalid SQLite identifier detected', { identifier, reason: 'Contains invalid characters or too long' });
 			throw new Error(`Invalid identifier: ${identifier}`);
@@ -93,6 +93,20 @@ export class SQLiteProvider implements DataProvider
 
 		this.logger.debug('SQLite identifier validated successfully', { identifier });
 		return identifier;
+	}
+
+	/**
+	 * Escapes a database identifier with double quotes, handling table.field format.
+	 * @param identifier The identifier to escape (e.g., "users.id" or "id").
+	 * @returns The escaped identifier (e.g., "\"users\".\"id\"" or "\"id\"").
+	 */
+	private escapeIdentifier(identifier: string): string
+	{
+		// Split by dot to handle table.field format
+		const parts = identifier.split('.');
+
+		// Escape each part separately with double quotes
+		return parts.map(part => `"${part}"`).join('.');
 	}
 
 	/**
@@ -436,7 +450,7 @@ export class SQLiteProvider implements DataProvider
 				{
 					if (f === '*') return '*';
 					const safeFieldName = this.validateIdentifier(f);
-					return `"${safeFieldName}"`;
+					return this.escapeIdentifier(safeFieldName);
 				} else
 				{
 					// Check if this is an Aggregate
@@ -447,7 +461,7 @@ export class SQLiteProvider implements DataProvider
 						const safeType = this.validateIdentifier(agg.type);
 						const safeFieldName = this.validateIdentifier(fieldRefToString(agg.field));
 						const safeAlias = agg.alias ? this.validateAlias(agg.alias) : '';
-						return `${safeType}("${safeFieldName}")${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+						return `${safeType}(${this.escapeIdentifier(safeFieldName)})${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
 					}
 					// This shouldn't happen but provide a fallback
 					return '*';
@@ -486,7 +500,7 @@ export class SQLiteProvider implements DataProvider
 		if (query.groupBy && query.groupBy.length > 0)
 		{
 			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
-			sql += ' GROUP BY ' + safeGroupBy.map(f => `"${f}"`).join(', ');
+			sql += ' GROUP BY ' + safeGroupBy.map(f => this.escapeIdentifier(f)).join(', ');
 		}
 
 		if (query.orderBy && query.orderBy.length > 0)
@@ -495,7 +509,7 @@ export class SQLiteProvider implements DataProvider
 			{
 				const safeField = this.validateIdentifier(fieldRefToString(o.field));
 				const safeDirection = this.validateDirection(o.direction);
-				return `"${safeField}" ${safeDirection}`;
+				return `${this.escapeIdentifier(safeField)} ${safeDirection}`;
 			}).join(', ');
 		}
 
@@ -641,7 +655,7 @@ export class SQLiteProvider implements DataProvider
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
-			return `"${safeFieldName}" ${cond.op} (${sql})`;
+			return `${this.escapeIdentifier(safeFieldName)} ${cond.op} (${sql})`;
 		}
 		else if ('field' in cond && 'op' in cond && 'value' in cond)
 		{
@@ -652,7 +666,7 @@ export class SQLiteProvider implements DataProvider
 			}
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(this.convertValueToSQLite(cond.value));
-			return `"${safeFieldName}" ${cond.op} ?`;
+			return `${this.escapeIdentifier(safeFieldName)} ${cond.op} ?`;
 		}
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
 		{
@@ -663,7 +677,7 @@ export class SQLiteProvider implements DataProvider
 			}
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values.map(v => this.convertValueToSQLite(v)));
-			return `"${safeFieldName}" ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			return `${this.escapeIdentifier(safeFieldName)} ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 		}
 		else if ('and' in cond)
 		{
@@ -681,7 +695,7 @@ export class SQLiteProvider implements DataProvider
 		{
 			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
-			return `"${safeFieldName}" LIKE ?`;
+			return `${this.escapeIdentifier(safeFieldName)} LIKE ?`;
 		}
 		throw new Error('Unknown condition type');
 	}
