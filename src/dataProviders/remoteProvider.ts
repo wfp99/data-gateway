@@ -1,6 +1,7 @@
 import { DataProvider, ConnectionPoolStatus } from "../dataProvider";
 import { Query, QueryResult } from "../queryObject";
 import { getLogger } from "../logger";
+import { DataGateway } from "../dataGateway";
 
 export interface RemoteProviderOptions
 {
