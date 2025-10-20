@@ -648,8 +648,9 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	{
 		const result: Record<string, any> = {};
 
-		// Build a map of table names to their mappers
+		// Build a map of table names to their mappers and repository names
 		const tableMappers = new Map<string, EntityFieldMapper<any>>();
+		const tableToRepositoryName = new Map<string, string>();
 		tableMappers.set(this.table, this.mapper);
 
 		// Add mappers for joined tables
@@ -657,6 +658,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		{
 			let tableName: string;
 			let mapper: EntityFieldMapper<any>;
+			let repositoryName: string | undefined;
 
 			if ('repository' in join.source)
 			{
@@ -665,6 +667,7 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				{
 					tableName = repo.getTable();
 					mapper = repo.getMapper();
+					repositoryName = join.source.repository;
 				}
 				else
 				{
@@ -681,6 +684,10 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			}
 
 			tableMappers.set(tableName, mapper);
+			if (repositoryName)
+			{
+				tableToRepositoryName.set(tableName, repositoryName);
+			}
 		}
 
 		// Process each column in the database row
@@ -700,7 +707,27 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 					if (mapper)
 					{
 						const fieldName = mapper.fromDbField(columnName);
-						result[`${tableName}.${fieldName}`] = dbRow[dbColumn];
+						// Only add table prefix for non-main table fields
+						// Main table fields should not have table prefix in the result
+						if (tableName === this.table)
+						{
+							// Main table field: use field name without table prefix
+							result[fieldName] = dbRow[dbColumn];
+						}
+						else
+						{
+							// Joined table field: use repository name if available, otherwise use table name
+							const prefixName = tableToRepositoryName.get(tableName) || tableName;
+							result[`${prefixName}.${fieldName}`] = dbRow[dbColumn];
+						}
+						mapped = true;
+					}
+					else
+					{
+						// Table not found in mappers, keep as-is with table prefix
+						// This handles cases where table.field format is used but the table
+						// doesn't have a corresponding mapper
+						result[dbColumn] = dbRow[dbColumn];
 						mapped = true;
 					}
 				}
@@ -728,7 +755,9 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 						if (fieldName !== dbColumn)
 						{
 							// This mapper recognized the column
-							result[`${tableName}.${fieldName}`] = dbRow[dbColumn];
+							// Use repository name if available, otherwise use table name
+							const prefixName = tableToRepositoryName.get(tableName) || tableName;
+							result[`${prefixName}.${fieldName}`] = dbRow[dbColumn];
 							mapped = true;
 							break;
 						}
