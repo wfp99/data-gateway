@@ -2,6 +2,7 @@ import { DataProvider, ConnectionPoolStatus } from "../dataProvider";
 import { Query, QueryResult } from "../queryObject";
 import { getLogger } from "../logger";
 import { DataGateway } from "../dataGateway";
+import { SQLEscaper } from "./sqlEscaper";
 
 export interface RemoteProviderOptions
 {
@@ -204,6 +205,23 @@ export class RemoteProvider implements DataProvider
 	supportsConnectionPooling(): boolean
 	{
 		return false;
+	}
+
+	/**
+	 * Returns a placeholder SQL escaper.
+	 * RemoteProvider doesn't perform SQL escaping locally as it forwards
+	 * queries to a remote endpoint. The remote server is responsible for
+	 * proper SQL escaping using its own provider's escaper.
+	 * @returns A no-op SQLEscaper that throws errors if used
+	 */
+	getEscaper(): SQLEscaper
+	{
+		// Create an anonymous class that extends SQLEscaper
+		return new class extends SQLEscaper {
+			escapeIdentifier(identifier: string): string {
+				throw new Error('[RemoteProvider.getEscaper] RemoteProvider does not support local SQL escaping. Queries are forwarded to remote endpoint.');
+			}
+		}();
 	}
 
 	/**
