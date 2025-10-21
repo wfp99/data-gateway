@@ -2,9 +2,10 @@
 import { DataProvider } from './dataProvider';
 import { DefaultFieldMapper, EntityFieldMapper } from './entityFieldMapper';
 import { Middleware, runMiddlewares } from './middleware';
-import { Query, Condition, Aggregate, Join, JoinSource, FieldReference, fieldRefToString } from './queryObject';
+import { Query, Condition, Aggregate, Join, JoinSource, FieldReference, fieldRefToString, QueryResult } from './queryObject';
 import { getLogger } from './logger';
 import { DataGateway } from './dataGateway';
+import { QueryCompiler } from './queryCompiler';
 
 /**
  * Generic Repository, provides methods to operate on specified type objects using DataProvider.
@@ -71,6 +72,211 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		this.logger.error(errorMsg, { table: this.table, ...context });
 		return new Error(errorMsg);
 	}
+
+	/**
+	 * Executes a query using PreparedQuery for security when available.
+	 * Falls back to query() for providers that don't support executePrepared.
+	 * All queries go through QueryCompiler for parameterization when possible.
+	 *
+	 * @param query The query object to execute
+	 * @returns Query result
+	 */
+	private async executeQuery<T = any>(query: Query): Promise<QueryResult<T>>
+	{
+		// Use PreparedQuery if available (recommended for security)
+		if (this.provider.executePrepared)
+		{
+			return await runMiddlewares(this.middlewares, query, async (q) =>
+			{
+				// Compile to PreparedQuery for security (inside middleware callback)
+				const compiler = new QueryCompiler(this.provider.getEscaper());
+				const preparedQuery = compiler.compile(q);
+
+				// Execute using parameterized query
+				return this.provider.executePrepared!<T>(preparedQuery);
+			});
+		}
+		else
+		{
+			// Fallback to traditional query() for legacy providers
+			return await runMiddlewares(this.middlewares, query, async (q) =>
+			{
+				return this.provider.query<T>(q);
+			});
+		}
+	}
+
+	/**
+	 * Detects and warns about field conflicts in JOIN queries.
+	 * When multiple tables have fields with the same name, this method
+	 * helps developers identify potential ambiguity issues.
+	 *
+	 * @param query The query to check for field conflicts
+	 */
+	private detectFieldConflicts(query: Partial<Query>): void
+	{
+		// Only check for queries with JOINs
+		if (!query.joins || query.joins.length === 0) return;
+
+		// Helper function to check if a field has a prefix (table or repository)
+		const hasPrefix = (field: FieldReference | Aggregate): boolean =>
+		{
+			if (typeof field === 'string')
+			{
+				// String format: check for dot notation
+				return field.includes('.');
+			}
+			else if ('type' in field)
+			{
+				// Aggregate
+				const fieldRef = field.field;
+				if (typeof fieldRef === 'string')
+				{
+					return fieldRef.includes('.');
+				}
+				else if (typeof fieldRef === 'object')
+				{
+					return !!(fieldRef.table || fieldRef.repository);
+				}
+			}
+			else
+			{
+				// FieldReference object
+				return !!(field.table || field.repository);
+			}
+			return false;
+		};
+
+		// If fields are specified and ALL fields have prefixes, no need to check
+		if (query.fields && query.fields.length > 0)
+		{
+			const allHavePrefix = query.fields.every(hasPrefix);
+			if (allHavePrefix)
+			{
+				// All fields are properly prefixed, no conflict detection needed
+				return;
+			}
+		}
+
+		// Build a map of field names to tables that contain them
+		const fieldToTables = new Map<string, string[]>();
+
+		// Helper function to extract field names from a mapper
+		const getFieldsFromMapper = (mapper: EntityFieldMapper<any>): string[] =>
+		{
+			// Get all entity fields by checking what the mapper can convert
+			// We'll try common field names and see what it produces
+			const sampleFields = ['id', 'name', 'status', 'createdAt', 'updatedAt'];
+			const fields = new Set<string>();
+
+			for (const field of sampleFields)
+			{
+				const dbField = mapper.toDbField(field);
+				if (dbField !== field)
+				{
+					// The mapper recognized this field
+					fields.add(field);
+				}
+			}
+
+			return Array.from(fields);
+		};
+
+		// Add fields from the main table
+		const mainFields = getFieldsFromMapper(this.mapper);
+		for (const field of mainFields)
+		{
+			if (!fieldToTables.has(field))
+			{
+				fieldToTables.set(field, []);
+			}
+			fieldToTables.get(field)!.push(this.table);
+		}
+
+		// Add fields from joined tables
+		for (const join of query.joins)
+		{
+			const { table, mapper } = this.resolveJoinSourceInfo(join.source);
+			const joinedFields = getFieldsFromMapper(mapper);
+
+			for (const field of joinedFields)
+			{
+				if (!fieldToTables.has(field))
+				{
+					fieldToTables.set(field, []);
+				}
+				fieldToTables.get(field)!.push(table);
+			}
+		}
+
+		// Collect unprefixed fields from the query
+		const unprefixedFields = new Set<string>();
+		if (query.fields)
+		{
+			for (const field of query.fields)
+			{
+				if (!hasPrefix(field))
+				{
+					// Extract the field name
+					if (typeof field === 'string')
+					{
+						unprefixedFields.add(field);
+					}
+					else if ('type' in field)
+					{
+						// Aggregate
+						const fieldRef = field.field;
+						if (typeof fieldRef === 'string')
+						{
+							unprefixedFields.add(fieldRef);
+						}
+						else if (typeof fieldRef === 'object')
+						{
+							unprefixedFields.add(fieldRef.field);
+						}
+					}
+					else
+					{
+						// FieldReference object
+						unprefixedFields.add(field.field);
+					}
+				}
+			}
+		}
+
+		// Detect conflicts
+		const conflicts: Array<{ field: string; tables: string[] }> = [];
+
+		for (const [field, tables] of fieldToTables.entries())
+		{
+			if (tables.length > 1)
+			{
+				// This field exists in multiple tables
+				// Only warn if:
+				// 1. No specific fields were requested (SELECT *), or
+				// 2. This field was explicitly requested without table/repository prefix
+				if (!query.fields || unprefixedFields.has(field))
+				{
+					conflicts.push({ field, tables });
+				}
+			}
+		}
+
+		// Issue warnings for detected conflicts
+		if (conflicts.length > 0)
+		{
+			for (const conflict of conflicts)
+			{
+				const tablesStr = conflict.tables.join("', '");
+				this.logger.warn(
+					`Field conflict detected: Field '${conflict.field}' exists in multiple tables: ['${tablesStr}']. ` +
+					`Consider using table-prefixed fields like tableField('${conflict.tables[0]}', '${conflict.field}') ` +
+					`to avoid ambiguity.`
+				);
+			}
+		}
+	}
+
 
 	/**
 	 * Resolves a field reference (repository.field or table.field) to database format
@@ -425,175 +631,6 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 	}
 
 	/**
-	 * Detects field conflicts in JOIN queries where the same field name exists in multiple tables.
-	 * Issues warnings when conflicts are detected and provides suggestions for using table-prefixed fields.
-	 * @param query The query object to check for field conflicts
-	 */
-	private detectFieldConflicts(query: Partial<Query>): void
-	{
-		// Only check for queries with JOINs
-		if (!query.joins || query.joins.length === 0) return;
-
-		// Helper function to check if a field has a prefix (table or repository)
-		const hasPrefix = (field: FieldReference | Aggregate): boolean =>
-		{
-			if (typeof field === 'string')
-			{
-				// String format: check for dot notation
-				return field.includes('.');
-			}
-			else if ('type' in field)
-			{
-				// Aggregate
-				const fieldRef = field.field;
-				if (typeof fieldRef === 'string')
-				{
-					return fieldRef.includes('.');
-				}
-				else if (typeof fieldRef === 'object')
-				{
-					return !!(fieldRef.table || fieldRef.repository);
-				}
-			}
-			else
-			{
-				// FieldReference object
-				return !!(field.table || field.repository);
-			}
-			return false;
-		};
-
-		// If fields are specified and ALL fields have prefixes, no need to check
-		if (query.fields && query.fields.length > 0)
-		{
-			const allHavePrefix = query.fields.every(hasPrefix);
-			if (allHavePrefix)
-			{
-				// All fields are properly prefixed, no conflict detection needed
-				return;
-			}
-		}
-
-		// Build a map of field names to tables that contain them
-		const fieldToTables = new Map<string, string[]>();
-
-		// Helper function to extract field names from a mapper
-		const getFieldsFromMapper = (mapper: EntityFieldMapper<any>): string[] =>
-		{
-			// Get all entity fields by checking what the mapper can convert
-			// We'll try common field names and see what it produces
-			const sampleFields = ['id', 'name', 'status', 'createdAt', 'updatedAt'];
-			const fields = new Set<string>();
-
-			for (const field of sampleFields)
-			{
-				const dbField = mapper.toDbField(field);
-				if (dbField !== field)
-				{
-					// The mapper recognized this field
-					fields.add(field);
-				}
-			}
-
-			return Array.from(fields);
-		};
-
-		// Add fields from the main table
-		const mainFields = getFieldsFromMapper(this.mapper);
-		for (const field of mainFields)
-		{
-			if (!fieldToTables.has(field))
-			{
-				fieldToTables.set(field, []);
-			}
-			fieldToTables.get(field)!.push(this.table);
-		}
-
-		// Add fields from joined tables
-		for (const join of query.joins)
-		{
-			const { table, mapper } = this.resolveJoinSourceInfo(join.source);
-			const joinedFields = getFieldsFromMapper(mapper);
-
-			for (const field of joinedFields)
-			{
-				if (!fieldToTables.has(field))
-				{
-					fieldToTables.set(field, []);
-				}
-				fieldToTables.get(field)!.push(table);
-			}
-		}
-
-		// Collect unprefixed fields from the query
-		const unprefixedFields = new Set<string>();
-		if (query.fields)
-		{
-			for (const field of query.fields)
-			{
-				if (!hasPrefix(field))
-				{
-					// Extract the field name
-					if (typeof field === 'string')
-					{
-						unprefixedFields.add(field);
-					}
-					else if ('type' in field)
-					{
-						// Aggregate
-						const fieldRef = field.field;
-						if (typeof fieldRef === 'string')
-						{
-							unprefixedFields.add(fieldRef);
-						}
-						else if (typeof fieldRef === 'object')
-						{
-							unprefixedFields.add(fieldRef.field);
-						}
-					}
-					else
-					{
-						// FieldReference object
-						unprefixedFields.add(field.field);
-					}
-				}
-			}
-		}
-
-		// Detect conflicts
-		const conflicts: Array<{ field: string; tables: string[] }> = [];
-
-		for (const [field, tables] of fieldToTables.entries())
-		{
-			if (tables.length > 1)
-			{
-				// This field exists in multiple tables
-				// Only warn if:
-				// 1. No specific fields were requested (SELECT *), or
-				// 2. This field was explicitly requested without table/repository prefix
-				if (!query.fields || unprefixedFields.has(field))
-				{
-					conflicts.push({ field, tables });
-				}
-			}
-		}
-
-		// Issue warnings for detected conflicts
-		if (conflicts.length > 0)
-		{
-			for (const conflict of conflicts)
-			{
-				const tablesStr = conflict.tables.join("', '");
-				this.logger.warn(
-					`Field conflict detected: Field '${conflict.field}' exists in multiple tables: ['${tablesStr}']. ` +
-					`Consider using table-prefixed fields like tableField('${conflict.tables[0]}', '${conflict.field}') ` +
-					`to avoid ambiguity.`
-				);
-			}
-		}
-	}
-
-	/**
 	 * Query an array of objects
 	 * @param query Query conditions, no need to specify type and table
 	 * @returns Array of queried result objects
@@ -611,22 +648,22 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			}
 
 			const dbQuery = this.mapQueryToDb({ ...query, type: 'SELECT', table: this.table });
-			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
-			{
-				return this.provider.query<Record<string, any>>(q);
-			});
+
+			// Execute query using centralized method (uses PreparedQuery when available)
+			const { rows } = await this.executeQuery<Record<string, any>>(dbQuery);
+			const resultRows = rows ?? [];
 
 			// If the query contains JOINs, we need to handle field mapping for multiple tables
 			if (query?.joins && query.joins.length > 0)
 			{
-				const results = await Promise.all(rows?.map(row => this.mapJoinedRowFromDb(row, query.joins!)) ?? []);
+				const results = await Promise.all(resultRows.map(row => this.mapJoinedRowFromDb(row, query.joins!)));
 				this.logger.debug(`Find query with JOINs completed`, { table: this.table, resultCount: results.length });
 				return results;
 			}
 			else
 			{
 				// Simple query without JOINs, use the repository's mapper
-				const results = await Promise.all(rows?.map(row => this.mapper.fromDb(row)) ?? []);
+				const results = await Promise.all(resultRows.map(row => this.mapper.fromDb(row)));
 				this.logger.debug(`Find query completed`, { table: this.table, resultCount: results.length });
 				return results;
 			}
@@ -652,6 +689,8 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 		const tableMappers = new Map<string, EntityFieldMapper<any>>();
 		const tableToRepositoryName = new Map<string, string>();
 		tableMappers.set(this.table, this.mapper);
+
+		this.logger.debug(`Mapping joined row from DB`, { table: this.table, dbRow, joins });
 
 		// Add mappers for joined tables
 		for (const join of joins)
@@ -772,6 +811,8 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 			}
 		}
 
+		this.logger.debug(`Mapped row from DB`, { table: this.table, dbRow, result });
+
 		return result as T;
 	}
 
@@ -821,10 +862,10 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				where: condition
 			};
 			const dbQuery = this.mapQueryToDb(query);
-			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
-			{
-				return this.provider.query<Record<string, any>>(q);
-			});
+
+			// Use PreparedQuery for security
+			const { rows } = await this.executeQuery<Record<string, any>>(dbQuery);
+
 			// The result will be in a field named 'result' due to the alias.
 			// Coerce to Number as some DB drivers might return it as a string.
 			return (rows && rows.length > 0) ? Number(rows[0].result) || 0 : 0;
@@ -852,10 +893,10 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				where: condition
 			};
 			const dbQuery = this.mapQueryToDb(query);
-			const { rows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
-			{
-				return this.provider.query<Record<string, any>>(q);
-			});
+
+			// Use PreparedQuery for security
+			const { rows } = await this.executeQuery<Record<string, any>>(dbQuery);
+
 			const result: Record<string, number> = {};
 			const row = rows?.[0] ?? {};
 			for (const f of fields)
@@ -888,10 +929,10 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				values
 			};
 			const dbQuery = this.mapQueryToDb(query);
-			const result = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
-			{
-				return this.provider.query(q);
-			});
+
+			// Execute query using centralized method (uses PreparedQuery when available)
+			const result = await this.executeQuery(dbQuery);
+
 			const insertId = result.insertId ?? 0;
 			this.logger.info(`Entity inserted successfully`, { table: this.table, insertId });
 			return insertId;
@@ -920,11 +961,11 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				where: condition
 			};
 			const dbQuery = this.mapQueryToDb(query);
-			const { affectedRows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
-			{
-				return this.provider.query(q);
-			});
-			return affectedRows ?? 0;
+
+			// Execute query using centralized method (uses PreparedQuery when available)
+			const result = await this.executeQuery(dbQuery);
+
+			return result.affectedRows ?? 0;
 		}
 		catch (err)
 		{
@@ -947,11 +988,11 @@ export class Repository<T = any, M extends EntityFieldMapper<T> = EntityFieldMap
 				where: condition
 			};
 			const dbQuery = this.mapQueryToDb(query);
-			const { affectedRows } = await runMiddlewares(this.middlewares, dbQuery, async (q) =>
-			{
-				return this.provider.query(q);
-			});
-			return affectedRows ?? 0;
+
+			// Execute query using centralized method (uses PreparedQuery when available)
+			const result = await this.executeQuery(dbQuery);
+
+			return result.affectedRows ?? 0;
 		}
 		catch (err)
 		{
