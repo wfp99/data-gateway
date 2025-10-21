@@ -1,18 +1,18 @@
 # PostgreSQL Provider
 
-PostgreSQL Provider is a Data Gateway data provider specifically designed for PostgreSQL databases. It implements the `DataProvider` interface and supports connection pooling, query building, and error handling.
+PostgreSQL Provider 是專為 PostgreSQL 資料庫設計的 Data Gateway 資料提供者。它實現了 `DataProvider` 介面，支援連線池、查詢建構和錯誤處理。
 
-## Installation
+## 安裝
 
-PostgreSQL Provider requires the `pg` package as a peer dependency:
+PostgreSQL Provider 需要 `pg` 套件作為同級依賴：
 
 ```bash
 npm install pg @types/pg
 ```
 
-## Basic Usage
+## 基本使用
 
-### Connection Configuration
+### 連線設定
 
 ```typescript
 import { DataGateway } from '@wfp99/data-gateway';
@@ -39,41 +39,9 @@ const gateway = await DataGateway.build({
 });
 ```
 
-### Connection Pool Configuration
+### 連線池設定
 
-PostgreSQL Provider enables connection pooling by default, configurable through the `pool` option:
-
-```typescript
-const gateway = await DataGateway.build({
-  providers: {
-    postgres: {
-      type: 'postgresql',
-      options: {
-        host: 'localhost',
-        port: 5432,
-        user: 'postgres',
-        password: 'password',
-        database: 'mydb',
-        pool: {
-          usePool: true,                    // Enable connection pooling (default: true)
-          max: 20,                         // Maximum connections (default: 10)
-          min: 5,                          // Minimum connections (default: 0)
-          idleTimeoutMillis: 30000,        // Idle timeout (default: 10000)
-          connectionTimeoutMillis: 60000,  // Connection timeout (default: 30000)
-          allowExitOnIdle: false,          // Allow exit when idle (default: false)
-        },
-      },
-    },
-  },
-  repositories: {
-    users: { provider: 'postgres', table: 'users' },
-  },
-});
-```
-
-### Disabling Connection Pool
-
-To use a single connection instead of connection pooling:
+PostgreSQL Provider 預設啟用連線池，可透過 `pool` 選項設定：
 
 ```typescript
 const gateway = await DataGateway.build({
@@ -87,7 +55,12 @@ const gateway = await DataGateway.build({
         password: 'password',
         database: 'mydb',
         pool: {
-          usePool: false,  // Disable connection pooling
+          usePool: true,                    // 啟用連線池（預設：true）
+          max: 20,                         // 最大連線數（預設：10）
+          min: 5,                          // 最小連線數（預設：0）
+          idleTimeoutMillis: 30000,        // 閒置超時（預設：10000）
+          connectionTimeoutMillis: 60000,  // 連線超時（預設：30000）
+          allowExitOnIdle: false,          // 閒置時允許退出（預設：false）
         },
       },
     },
@@ -98,13 +71,40 @@ const gateway = await DataGateway.build({
 });
 ```
 
-## Connection Options
+### 停用連線池
 
-PostgreSQL Provider supports all `ClientConfig` options from the `pg` package:
+如需使用單一連線而非連線池：
+
+```typescript
+const gateway = await DataGateway.build({
+  providers: {
+    postgres: {
+      type: 'postgresql',
+      options: {
+        host: 'localhost',
+        port: 5432,
+        user: 'postgres',
+        password: 'password',
+        database: 'mydb',
+        pool: {
+          usePool: false,  // 停用連線池
+        },
+      },
+    },
+  },
+  repositories: {
+    users: { provider: 'postgres', table: 'users' },
+  },
+});
+```
+
+## 連線選項
+
+PostgreSQL Provider 支援 `pg` 套件的所有 `ClientConfig` 選項：
 
 ```typescript
 interface PostgreSQLProviderOptions extends ClientConfig {
-  // Basic connection options
+  // 基本連線選項
   host?: string;
   port?: number;
   user?: string;
@@ -112,17 +112,17 @@ interface PostgreSQLProviderOptions extends ClientConfig {
   database?: string;
   connectionString?: string;
 
-  // SSL configuration
+  // SSL 設定
   ssl?: boolean | ConnectionOptions;
 
-  // Timeout settings
+  // 超時設定
   connectionTimeoutMillis?: number;
   statement_timeout?: false | number;
   query_timeout?: number;
   lock_timeout?: number;
   idle_in_transaction_session_timeout?: number;
 
-  // Other options
+  // 其他選項
   keepAlive?: boolean;
   keepAliveInitialDelayMillis?: number;
   application_name?: string;
@@ -130,39 +130,39 @@ interface PostgreSQLProviderOptions extends ClientConfig {
   client_encoding?: string;
   options?: string;
 
-  // Connection pool configuration
+  // 連線池設定
   pool?: PostgreSQLConnectionPoolConfig;
 }
 ```
 
-## Query Features
+## 查詢功能
 
-### Basic CRUD Operations
+### 基本 CRUD 操作
 
 ```typescript
 const userRepo = gateway.getRepository('users');
 
-// Create user
+// 建立使用者
 const userId = await userRepo.insert({
   name: 'John Doe',
   email: 'john@example.com',
   age: 30,
 });
 
-// Query users
+// 查詢使用者
 const users = await userRepo.findMany({
   field: 'age',
   op: '>',
   value: 18,
 });
 
-// Update user
+// 更新使用者
 const updatedRows = await userRepo.update(
   { email: 'john.doe@example.com' },
   { field: 'id', op: '=', value: userId }
 );
 
-// Delete user
+// 刪除使用者
 const deletedRows = await userRepo.delete({
   field: 'id',
   op: '=',
@@ -170,10 +170,10 @@ const deletedRows = await userRepo.delete({
 });
 ```
 
-### Complex Queries
+### 複雜查詢
 
 ```typescript
-// AND/OR conditions
+// AND/OR 條件
 const activeAdults = await userRepo.findMany({
   and: [
     { field: 'active', op: '=', value: true },
@@ -181,12 +181,12 @@ const activeAdults = await userRepo.findMany({
   ],
 });
 
-// LIKE queries
+// LIKE 查詢
 const johnUsers = await userRepo.findMany({
   like: { field: 'name', pattern: 'John%' },
 });
 
-// IN queries
+// IN 查詢
 const specificUsers = await userRepo.findMany({
   field: 'id',
   op: 'IN',
@@ -194,10 +194,10 @@ const specificUsers = await userRepo.findMany({
 });
 ```
 
-### Aggregate Queries
+### 聚合查詢
 
 ```typescript
-// Statistics queries
+// 統計查詢
 const stats = await userRepo.find({
   fields: [
     'department',
@@ -210,17 +210,17 @@ const stats = await userRepo.find({
 });
 ```
 
-### Pagination
+### 分頁
 
 ```typescript
-// First page
+// 第一頁
 const page1 = await userRepo.findMany(undefined, {
   orderBy: [{ field: 'created_at', direction: 'DESC' }],
   limit: 10,
   offset: 0,
 });
 
-// Second page
+// 第二頁
 const page2 = await userRepo.findMany(undefined, {
   orderBy: [{ field: 'created_at', direction: 'DESC' }],
   limit: 10,
@@ -228,14 +228,14 @@ const page2 = await userRepo.findMany(undefined, {
 });
 ```
 
-## Advanced Query Features
+## 進階查詢功能
 
-### Subquery Support
+### 子查詢支援
 
-PostgreSQL Provider supports subqueries for complex filtering:
+PostgreSQL Provider 支援子查詢進行複雜篩選：
 
 ```typescript
-// Find users in departments with more than 10 employees
+// 找出部門員工數超過 10 人的使用者
 const users = await userRepo.find({
   where: {
     field: 'department_id',
@@ -253,7 +253,7 @@ const users = await userRepo.find({
   }
 });
 
-// Users with above-average salary
+// 薪水高於平均值的使用者
 const aboveAverageUsers = await userRepo.find({
   where: {
     field: 'salary',
@@ -267,10 +267,10 @@ const aboveAverageUsers = await userRepo.find({
 });
 ```
 
-### Complex AND/OR Conditions
+### 複雜 AND/OR 條件
 
 ```typescript
-// Complex filtering with nested conditions
+// 巢狀條件的複雜篩選
 const complexQuery = await userRepo.find({
   where: {
     and: [
@@ -291,47 +291,47 @@ const complexQuery = await userRepo.find({
 });
 ```
 
-## Connection Pool Monitoring
+## 連線池監控
 
-PostgreSQL Provider provides connection pool status monitoring:
+PostgreSQL Provider 提供連線池狀態監控：
 
 ```typescript
-// Get pool status for specific provider
+// 取得特定提供者的連線池狀態
 const poolStatus = gateway.getProviderPoolStatus('postgres');
 if (poolStatus) {
-  console.log('Connection Pool Status:');
-  console.log(`Total connections: ${poolStatus.totalConnections}`);
-  console.log(`Active connections: ${poolStatus.activeConnections}`);
-  console.log(`Idle connections: ${poolStatus.idleConnections}`);
-  console.log(`Max connections: ${poolStatus.maxConnections}`);
-  console.log(`Min connections: ${poolStatus.minConnections}`);
+  console.log('連線池狀態:');
+  console.log(`總連線數: ${poolStatus.totalConnections}`);
+  console.log(`使用中連線: ${poolStatus.activeConnections}`);
+  console.log(`閒置連線: ${poolStatus.idleConnections}`);
+  console.log(`最大連線數: ${poolStatus.maxConnections}`);
+  console.log(`最小連線數: ${poolStatus.minConnections}`);
 }
 
-// Get pool status for all providers
+// 取得所有提供者的連線池狀態
 const allPoolStatuses = gateway.getAllPoolStatuses();
 for (const [providerName, status] of allPoolStatuses) {
-  console.log(`${providerName} pool status:`, status);
+  console.log(`${providerName} 連線池狀態:`, status);
 }
 ```
 
-## PostgreSQL-Specific Data Types
+## PostgreSQL 特定資料類型
 
-### Handling JSON Data
+### 處理 JSON 資料
 
-When using PostgreSQL's JSON features, store data as strings and handle JSON operations at the application layer:
+使用 PostgreSQL 的 JSON 功能時，將資料儲存為字串，在應用程式層處理 JSON 操作：
 
 ```typescript
-// Insert JSON data (stored as text)
+// 插入 JSON 資料（儲存為文字）
 await docRepo.insert({
-  title: 'Product Information',
+  title: '產品資訊',
   metadata: JSON.stringify({
     version: '1.0',
     tags: ['product', 'info'],
-    pricing: { currency: 'USD', amount: 29.99 }
+    pricing: { currency: 'TWD', amount: 2990 }
   }),
 });
 
-// Query and parse JSON data
+// 查詢並解析 JSON 資料
 const docs = await docRepo.find({
   fields: ['title', 'metadata'],
   where: {
@@ -339,31 +339,31 @@ const docs = await docRepo.find({
   }
 });
 
-// Parse JSON at application layer
+// 在應用程式層解析 JSON
 const parsedDocs = docs.rows?.map(doc => ({
   ...doc,
   metadata: JSON.parse(doc.metadata)
 }));
 ```
 
-### Handling Arrays
+### 處理陣列
 
 ```typescript
-// Store array data as JSON strings
+// 將陣列資料儲存為 JSON 字串
 await userRepo.insert({
   name: 'John',
   skills: JSON.stringify(['JavaScript', 'TypeScript', 'PostgreSQL']),
   scores: JSON.stringify([8.5, 9.2, 7.8]),
 });
 
-// Query and parse array data
+// 查詢並解析陣列資料
 const users = await userRepo.find({
   where: {
     like: { field: 'skills', pattern: '%JavaScript%' }
   }
 });
 
-// Parse arrays at application layer
+// 在應用程式層解析陣列
 const parsedUsers = users.rows?.map(user => ({
   ...user,
   skills: JSON.parse(user.skills),
@@ -371,83 +371,83 @@ const parsedUsers = users.rows?.map(user => ({
 }));
 ```
 
-## Error Handling
+## 錯誤處理
 
-PostgreSQL Provider provides detailed error messages:
+PostgreSQL Provider 提供詳細的錯誤訊息：
 
 ```typescript
 try {
   const result = await userRepo.insert({ name: 'Test User' });
 } catch (error) {
-  console.error('Insert failed:', error.message);
-  // Error format: [PostgreSQLProvider.query] Specific error message
+  console.error('插入失敗:', error.message);
+  // 錯誤格式: [PostgreSQLProvider.query] 具體錯誤訊息
 }
 ```
 
-Common error types:
-- Connection errors: Database unreachable
-- SQL syntax errors: Invalid query syntax
-- Constraint violations: Database constraint violations
-- Permission errors: Insufficient privileges
+常見錯誤類型：
+- 連線錯誤：資料庫無法連接
+- SQL 語法錯誤：無效的查詢語法
+- 約束違反：資料庫約束違反
+- 權限錯誤：權限不足
 
-## Performance Optimization
+## 效能優化
 
-### Connection Pool Tuning
+### 連線池調校
 
 ```typescript
-// High concurrency settings
+// 高併發設定
 pool: {
-  max: 50,                        // Increase max connections
-  min: 10,                        // Maintain minimum connections
-  idleTimeoutMillis: 60000,       // Longer idle timeout
-  connectionTimeoutMillis: 10000, // Shorter connection timeout
+  max: 50,                        // 增加最大連線數
+  min: 10,                        // 維持最小連線數
+  idleTimeoutMillis: 60000,       // 較長的閒置超時
+  connectionTimeoutMillis: 10000, // 較短的連線超時
 }
 
-// Low load settings
+// 低負載設定
 pool: {
-  max: 5,                         // Fewer max connections
-  min: 1,                         // Minimum connections
-  idleTimeoutMillis: 10000,       // Shorter idle timeout
+  max: 5,                         // 較少的最大連線數
+  min: 1,                         // 最小連線數
+  idleTimeoutMillis: 10000,       // 較短的閒置超時
 }
 ```
 
-### Query Optimization
+### 查詢優化
 
 ```typescript
-// Use indexed fields for queries
+// 使用索引欄位進行查詢
 const users = await userRepo.findMany({
-  field: 'email',  // Ensure email field is indexed
+  field: 'email',  // 確保 email 欄位有索引
   op: '=',
   value: 'user@example.com',
 });
 
-// Limit result sets
+// 限制結果數量
 const recentUsers = await userRepo.findMany(undefined, {
   orderBy: [{ field: 'created_at', direction: 'DESC' }],
-  limit: 100,  // Limit results
+  limit: 100,  // 限制結果
 });
 
-// Query only needed fields
+// 只查詢需要的欄位
 const userNames = await userRepo.find({
-  fields: ['id', 'name'],  // Only query needed fields
+  fields: ['id', 'name'],  // 只查詢需要的欄位
 });
 ```
 
-## Security Considerations
+## 安全性考量
 
-### Parameterized Queries
+### 參數化查詢
 
-PostgreSQL Provider automatically uses parameterized queries to prevent SQL injection:
+PostgreSQL Provider 自動使用參數化查詢防止 SQL 注入：
 
 ```typescript
-// Safe query (automatically parameterized)
+// 安全查詢（自動參數化）
 const user = await userRepo.findOne({
   field: 'email',
   op: '=',
-  value: userInput,  // Automatically escaped
+  value: userInput,  // 自動轉義
 });
 
-// Complex safe query
+// 複雜安全查詢
 const users = await userRepo.find({
   where: {
     and: [
@@ -457,13 +457,13 @@ const users = await userRepo.find({
   }
 });
 
-// All query objects are automatically protected against SQL injection
+// 所有查詢物件都會自動防護 SQL 注入
 ```
 
-### Connection Security
+### 連線安全
 
 ```typescript
-// SSL connection
+// SSL 連線
 const gateway = await DataGateway.build({
   providers: {
     postgres: {
@@ -489,7 +489,7 @@ const gateway = await DataGateway.build({
 });
 ```
 
-## Complete Example
+## 完整範例
 
 ```typescript
 import { DataGateway, PostgreSQLProviderOptions } from '@wfp99/data-gateway';
@@ -523,7 +523,7 @@ async function postgresExample() {
   try {
     const userRepo = gateway.getRepository('users');
 
-    // Insert user
+    // 插入使用者
     const userId = await userRepo?.insert({
       name: 'Alice Wang',
       email: 'alice@example.com',
@@ -531,7 +531,7 @@ async function postgresExample() {
       department: 'Engineering'
     });
 
-    // Complex query
+    // 複雜查詢
     const engineeringUsers = await userRepo?.find({
       fields: ['id', 'name', 'email'],
       where: {
@@ -544,11 +544,11 @@ async function postgresExample() {
       limit: 10
     });
 
-    console.log('Engineering department users:', engineeringUsers);
+    console.log('工程部門使用者:', engineeringUsers);
 
-    // Monitor connection pool
+    // 監控連線池
     const poolStatus = gateway.getProviderPoolStatus('postgres');
-    console.log('PostgreSQL connection pool status:', poolStatus);
+    console.log('PostgreSQL 連線池狀態:', poolStatus);
 
   } finally {
     await gateway.disconnectAll();
@@ -558,9 +558,9 @@ async function postgresExample() {
 postgresExample().catch(console.error);
 ```
 
-## Related Links
+## 相關連結
 
-- [PostgreSQL Official Documentation](https://www.postgresql.org/docs/)
-- [node-postgres (pg) Documentation](https://node-postgres.com/)
-- [DataGateway API Documentation](../api/data-gateway.en.md)
-- [Repository API Documentation](../api/repository.en.md)
+- [PostgreSQL 官方文件](https://www.postgresql.org/docs/)
+- [node-postgres (pg) 文件](https://node-postgres.com/)
+- [DataGateway API 文件](../api/data-gateway.zh-TW.md)
+- [Repository API 文件](../api/repository.zh-TW.md)

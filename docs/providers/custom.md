@@ -1,14 +1,14 @@
-# 自訂 Provider
+# Custom Providers
 
-Data Gateway 支援建立自訂 Data Provider，讓您可以整合任何資料來源。本指南將詳細說明如何實現自訂 Provider，包括介面定義、實作範例和最佳實踐。
+Data Gateway supports creating custom Data Providers, allowing you to integrate any data source. This guide will detail how to implement custom providers, including interface definitions, implementation examples, and best practices.
 
-## DataProvider 介面
+## DataProvider Interface
 
-所有 Data Provider 都必須實現 `DataProvider` 介面：
+All Data Providers must implement the `DataProvider` interface:
 
 ```typescript
 export interface DataProvider {
-  // 基本 CRUD 操作
+  // Basic CRUD operations
   insert(table: string, data: Record<string, any>): Promise<any>;
   findOne(table: string, condition: QueryCondition): Promise<Record<string, any> | null>;
   findMany(table: string, condition: QueryCondition): Promise<Record<string, any>[]>;
@@ -16,23 +16,23 @@ export interface DataProvider {
   update(table: string, data: Record<string, any>, condition: QueryCondition): Promise<number>;
   delete(table: string, condition: QueryCondition): Promise<number>;
 
-  // 原始查詢支援
+  // Raw query support
   query?(sql: string, params?: any[]): Promise<any>;
 
-  // 連線管理
+  // Connection management
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   isConnected(): boolean;
 
-  // 連線池支援（可選）
+  // Connection pool support (optional)
   getPoolStatus?(): ConnectionPoolStatus | null;
 }
 ```
 
-### 相關介面定義
+### Related Interface Definitions
 
 ```typescript
-// 查詢條件
+// Query condition
 export interface QueryCondition {
   field: string | AggregateField;
   op: QueryOperator;
@@ -43,7 +43,7 @@ export interface QueryCondition {
   or?: QueryCondition[];
 }
 
-// 查詢選項
+// Query options
 export interface QueryOptions {
   fields?: (string | AggregateField)[];
   where?: QueryCondition;
@@ -54,14 +54,14 @@ export interface QueryOptions {
   offset?: number;
 }
 
-// 查詢結果
+// Query result
 export interface QueryResult {
   rows: Record<string, any>[];
   totalCount?: number;
   affectedRows?: number;
 }
 
-// 連線池狀態
+// Connection pool status
 export interface ConnectionPoolStatus {
   totalConnections: number;
   activeConnections: number;
@@ -69,23 +69,23 @@ export interface ConnectionPoolStatus {
   maxConnections: number;
 }
 
-// 聚合欄位
+// Aggregate field
 export interface AggregateField {
   type: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
   field: string;
   alias?: string;
 }
 
-// 排序子句
+// Order by clause
 export interface OrderByClause {
   field: string | AggregateField;
   direction: 'ASC' | 'DESC';
 }
 ```
 
-## 基本實作範例
+## Basic Implementation Example
 
-### 簡單記憶體 Provider
+### Simple Memory Provider
 
 ```typescript
 import { DataProvider, QueryCondition, QueryOptions, QueryResult } from '@wfp99/data-gateway';
@@ -97,14 +97,14 @@ export class MemoryProvider implements DataProvider {
 
   async connect(): Promise<void> {
     this.connected = true;
-    console.log('Memory Provider 已連線');
+    console.log('Memory Provider connected');
   }
 
   async disconnect(): Promise<void> {
     this.connected = false;
     this.data.clear();
     this.nextId.clear();
-    console.log('Memory Provider 已中斷連線');
+    console.log('Memory Provider disconnected');
   }
 
   isConnected(): boolean {
@@ -125,12 +125,12 @@ export class MemoryProvider implements DataProvider {
   }
 
   async insert(table: string, data: Record<string, any>): Promise<any> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     this.ensureTable(table);
     const tableData = this.data.get(table)!;
 
-    // 自動產生 ID
+    // Auto-generate ID
     const id = this.getNextId(table);
     const record = { id, ...data, created_at: new Date() };
 
@@ -139,7 +139,7 @@ export class MemoryProvider implements DataProvider {
   }
 
   async findOne(table: string, condition: QueryCondition): Promise<Record<string, any> | null> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     this.ensureTable(table);
     const tableData = this.data.get(table)!;
@@ -149,7 +149,7 @@ export class MemoryProvider implements DataProvider {
   }
 
   async findMany(table: string, condition: QueryCondition): Promise<Record<string, any>[]> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     this.ensureTable(table);
     const tableData = this.data.get(table)!;
@@ -158,24 +158,24 @@ export class MemoryProvider implements DataProvider {
   }
 
   async find(table: string, options: QueryOptions): Promise<QueryResult> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     this.ensureTable(table);
     let tableData = this.data.get(table)!;
 
-    // 篩選
+    // Filter
     if (options.where) {
       tableData = this.filterData(tableData, options.where);
     }
 
-    // 排序
+    // Sort
     if (options.orderBy) {
       tableData = this.sortData(tableData, options.orderBy);
     }
 
     const totalCount = tableData.length;
 
-    // 分頁
+    // Pagination
     if (options.offset !== undefined) {
       tableData = tableData.slice(options.offset);
     }
@@ -183,7 +183,7 @@ export class MemoryProvider implements DataProvider {
       tableData = tableData.slice(0, options.limit);
     }
 
-    // 選擇欄位
+    // Select fields
     if (options.fields) {
       tableData = tableData.map(row => this.selectFields(row, options.fields!));
     }
@@ -195,7 +195,7 @@ export class MemoryProvider implements DataProvider {
   }
 
   async update(table: string, data: Record<string, any>, condition: QueryCondition): Promise<number> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     this.ensureTable(table);
     const tableData = this.data.get(table)!;
@@ -212,7 +212,7 @@ export class MemoryProvider implements DataProvider {
   }
 
   async delete(table: string, condition: QueryCondition): Promise<number> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     this.ensureTable(table);
     const tableData = this.data.get(table)!;
@@ -224,23 +224,23 @@ export class MemoryProvider implements DataProvider {
     return originalLength - filtered.length;
   }
 
-  // 輔助方法
+  // Helper methods
   private filterData(data: Record<string, any>[], condition: QueryCondition): Record<string, any>[] {
     return data.filter(row => this.matchesCondition(row, condition));
   }
 
   private matchesCondition(row: Record<string, any>, condition: QueryCondition): boolean {
-    // AND 條件
+    // AND conditions
     if (condition.and) {
       return condition.and.every(subCondition => this.matchesCondition(row, subCondition));
     }
 
-    // OR 條件
+    // OR conditions
     if (condition.or) {
       return condition.or.some(subCondition => this.matchesCondition(row, subCondition));
     }
 
-    // 基本條件比較
+    // Basic condition comparison
     const fieldValue = row[condition.field as string];
 
     switch (condition.op) {
@@ -303,23 +303,23 @@ export class MemoryProvider implements DataProvider {
       if (typeof field === 'string') {
         result[field] = row[field];
       } else {
-        // 聚合欄位處理（簡化實作）
+        // Aggregate field handling (simplified implementation)
         const alias = field.alias || `${field.type.toLowerCase()}_${field.field}`;
-        result[alias] = row[field.field]; // 簡化處理
+        result[alias] = row[field.field]; // Simplified handling
       }
     }
 
     return result;
   }
 
-  // 可選：原始查詢支援
+  // Optional: Raw query support
   async query(sql: string, params?: any[]): Promise<any> {
-    throw new Error('Memory Provider 不支援原始 SQL 查詢');
+    throw new Error('Memory Provider does not support raw SQL queries');
   }
 }
 ```
 
-## 進階實作範例
+## Advanced Implementation Example
 
 ### RESTful API Provider
 
@@ -392,19 +392,19 @@ export class RestProvider implements DataProvider {
 
   async connect(): Promise<void> {
     try {
-      // 測試連線
+      // Test connection
       await this.client.get('/health');
       this.connected = true;
-      console.log('REST Provider 已連線');
+      console.log('REST Provider connected');
     } catch (error) {
       this.connected = false;
-      throw new Error(`REST Provider 連線失敗: ${error.message}`);
+      throw new Error(`REST Provider connection failed: ${error.message}`);
     }
   }
 
   async disconnect(): Promise<void> {
     this.connected = false;
-    console.log('REST Provider 已中斷連線');
+    console.log('REST Provider disconnected');
   }
 
   isConnected(): boolean {
@@ -412,43 +412,43 @@ export class RestProvider implements DataProvider {
   }
 
   async insert(table: string, data: Record<string, any>): Promise<any> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
       const endpoint = this.options.endpoints?.create || '';
       const response = await this.client.post(`/${table}${endpoint}`, data);
 
-      // 回傳建立的資源 ID 或完整物件
+      // Return created resource ID or full object
       return response.data.id || response.data;
     } catch (error) {
-      throw this.handleApiError(error, '建立資源');
+      throw this.handleApiError(error, 'create resource');
     }
   }
 
   async findOne(table: string, condition: QueryCondition): Promise<Record<string, any> | null> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
-      // 如果條件是 ID，直接查詢
+      // If condition is ID, query directly
       if (this.isIdCondition(condition)) {
         const endpoint = this.options.endpoints?.read || '';
         const response = await this.client.get(`/${table}/${condition.value}${endpoint}`);
         return response.data;
       }
 
-      // 否則查詢列表並取第一筆
+      // Otherwise query list and take first item
       const results = await this.findMany(table, condition);
       return results.length > 0 ? results[0] : null;
     } catch (error) {
       if (error.response?.status === 404) {
         return null;
       }
-      throw this.handleApiError(error, '查詢資源');
+      throw this.handleApiError(error, 'query resource');
     }
   }
 
   async findMany(table: string, condition: QueryCondition): Promise<Record<string, any>[]> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
       const endpoint = this.options.endpoints?.list || '';
@@ -456,15 +456,15 @@ export class RestProvider implements DataProvider {
 
       const response = await this.client.get(`/${table}${endpoint}`, { params });
 
-      // 處理不同的回應格式
+      // Handle different response formats
       return Array.isArray(response.data) ? response.data : response.data.items || response.data.data || [];
     } catch (error) {
-      throw this.handleApiError(error, '查詢資源列表');
+      throw this.handleApiError(error, 'query resource list');
     }
   }
 
   async find(table: string, options: QueryOptions): Promise<QueryResult> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
       const endpoint = this.options.endpoints?.list || '';
@@ -472,7 +472,7 @@ export class RestProvider implements DataProvider {
 
       const response = await this.client.get(`/${table}${endpoint}`, { params });
 
-      // 處理分頁回應
+      // Handle paginated response
       if (response.data.items || response.data.data) {
         return {
           rows: response.data.items || response.data.data,
@@ -480,28 +480,28 @@ export class RestProvider implements DataProvider {
         };
       }
 
-      // 簡單陣列回應
+      // Simple array response
       return {
         rows: Array.isArray(response.data) ? response.data : [],
         totalCount: Array.isArray(response.data) ? response.data.length : 0
       };
     } catch (error) {
-      throw this.handleApiError(error, '查詢資源');
+      throw this.handleApiError(error, 'query resources');
     }
   }
 
   async update(table: string, data: Record<string, any>, condition: QueryCondition): Promise<number> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
-      // 如果條件是 ID，直接更新
+      // If condition is ID, update directly
       if (this.isIdCondition(condition)) {
         const endpoint = this.options.endpoints?.update || '';
         await this.client.put(`/${table}/${condition.value}${endpoint}`, data);
         return 1;
       }
 
-      // 否則先查詢再批次更新
+      // Otherwise query first then batch update
       const items = await this.findMany(table, condition);
       let updatedCount = 0;
 
@@ -513,22 +513,22 @@ export class RestProvider implements DataProvider {
 
       return updatedCount;
     } catch (error) {
-      throw this.handleApiError(error, '更新資源');
+      throw this.handleApiError(error, 'update resource');
     }
   }
 
   async delete(table: string, condition: QueryCondition): Promise<number> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
-      // 如果條件是 ID，直接刪除
+      // If condition is ID, delete directly
       if (this.isIdCondition(condition)) {
         const endpoint = this.options.endpoints?.delete || '';
         await this.client.delete(`/${table}/${condition.value}${endpoint}`);
         return 1;
       }
 
-      // 否則先查詢再批次刪除
+      // Otherwise query first then batch delete
       const items = await this.findMany(table, condition);
       let deletedCount = 0;
 
@@ -540,11 +540,11 @@ export class RestProvider implements DataProvider {
 
       return deletedCount;
     } catch (error) {
-      throw this.handleApiError(error, '刪除資源');
+      throw this.handleApiError(error, 'delete resource');
     }
   }
 
-  // 輔助方法
+  // Helper methods
   private isIdCondition(condition: QueryCondition): boolean {
     return (condition.field === 'id' || condition.field === '_id') &&
            condition.op === '=' &&
@@ -615,310 +615,38 @@ export class RestProvider implements DataProvider {
     if (error.response) {
       const status = error.response.status;
       const message = error.response.data?.message || error.response.statusText;
-      return new Error(`${operation}失敗 (${status}): ${message}`);
+      return new Error(`${operation} failed (${status}): ${message}`);
     } else if (error.request) {
-      return new Error(`${operation}失敗: 網路錯誤`);
+      return new Error(`${operation} failed: Network error`);
     } else {
-      return new Error(`${operation}失敗: ${error.message}`);
+      return new Error(`${operation} failed: ${error.message}`);
     }
   }
 
-  // 可選：原始查詢支援（GraphQL 或自訂端點）
+  // Optional: Raw query support (GraphQL or custom endpoints)
   async query(endpoint: string, params?: any[]): Promise<any> {
-    if (!this.connected) throw new Error('Provider 未連線');
+    if (!this.connected) throw new Error('Provider not connected');
 
     try {
       const response = await this.client.post(endpoint, { params });
       return response.data;
     } catch (error) {
-      throw this.handleApiError(error, '自訂查詢');
+      throw this.handleApiError(error, 'custom query');
     }
   }
 }
 ```
 
-## 連線池支援範例
+## Registering Custom Providers
 
-### 帶連線池的資料庫 Provider
-
-```typescript
-import { DataProvider, ConnectionPoolStatus } from '@wfp99/data-gateway';
-
-export interface PoolConfig {
-  usePool: boolean;
-  maxConnections: number;
-  minConnections?: number;
-  acquireTimeout?: number;
-  idleTimeout?: number;
-  preConnect?: boolean;
-}
-
-export abstract class PooledProvider implements DataProvider {
-  protected pool: ConnectionPool | null = null;
-  protected singleConnection: any = null;
-  protected config: PoolConfig;
-
-  constructor(config: PoolConfig) {
-    this.config = {
-      minConnections: 1,
-      acquireTimeout: 30000,
-      idleTimeout: 600000,
-      preConnect: false,
-      ...config
-    };
-  }
-
-  async connect(): Promise<void> {
-    if (this.config.usePool) {
-      this.pool = new ConnectionPool(this.config);
-      this.pool.createConnection = () => this.createConnection();
-      await this.pool.initialize();
-
-      if (this.config.preConnect) {
-        await this.pool.preConnect();
-      }
-    } else {
-      this.singleConnection = await this.createConnection();
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.pool) {
-      await this.pool.close();
-      this.pool = null;
-    } else if (this.singleConnection) {
-      await this.closeConnection(this.singleConnection);
-      this.singleConnection = null;
-    }
-  }
-
-  isConnected(): boolean {
-    return (this.pool?.isActive() || this.singleConnection !== null) || false;
-  }
-
-  getPoolStatus(): ConnectionPoolStatus | null {
-    return this.pool?.getStatus() || null;
-  }
-
-  protected async getConnection(): Promise<any> {
-    if (this.pool) {
-      return await this.pool.acquire();
-    } else if (this.singleConnection) {
-      return this.singleConnection;
-    } else {
-      throw new Error('Provider 未連線');
-    }
-  }
-
-  protected async releaseConnection(connection: any): Promise<void> {
-    if (this.pool) {
-      await this.pool.release(connection);
-    }
-    // 單一連線無需釋放
-  }
-
-  // 子類別必須實作的方法
-  protected abstract createConnection(): Promise<any>;
-  protected abstract closeConnection(connection: any): Promise<void>;
-
-  // DataProvider 介面方法
-  abstract insert(table: string, data: Record<string, any>): Promise<any>;
-  abstract findOne(table: string, condition: QueryCondition): Promise<Record<string, any> | null>;
-  abstract findMany(table: string, condition: QueryCondition): Promise<Record<string, any>[]>;
-  abstract find(table: string, options: QueryOptions): Promise<QueryResult>;
-  abstract update(table: string, data: Record<string, any>, condition: QueryCondition): Promise<number>;
-  abstract delete(table: string, condition: QueryCondition): Promise<number>;
-}
-
-// 連線池實作
-class ConnectionPool {
-  private connections: PoolConnection[] = [];
-  private acquireQueue: Array<{
-    resolve: (connection: any) => void;
-    reject: (error: Error) => void;
-    timeout: NodeJS.Timeout;
-  }> = [];
-  private active = false;
-
-  public createConnection!: () => Promise<any>;
-
-  constructor(private config: PoolConfig) {}
-
-  async initialize(): Promise<void> {
-    this.active = true;
-
-    // 建立最小連線數
-    for (let i = 0; i < (this.config.minConnections || 1); i++) {
-      await this.addConnection();
-    }
-  }
-
-  async preConnect(): Promise<void> {
-    const targetConnections = Math.min(this.config.maxConnections, 5);
-    while (this.connections.length < targetConnections) {
-      await this.addConnection();
-    }
-  }
-
-  private async addConnection(): Promise<void> {
-    if (this.connections.length >= this.config.maxConnections) {
-      return;
-    }
-
-    try {
-      const rawConnection = await this.createConnection();
-      const poolConnection: PoolConnection = {
-        raw: rawConnection,
-        inUse: false,
-        createdAt: Date.now(),
-        lastUsed: Date.now()
-      };
-
-      this.connections.push(poolConnection);
-      this.startIdleTimer(poolConnection);
-    } catch (error) {
-      console.error('建立連線失敗:', error);
-      throw error;
-    }
-  }
-
-  async acquire(): Promise<any> {
-    if (!this.active) {
-      throw new Error('連線池已關閉');
-    }
-
-    // 尋找可用連線
-    const available = this.connections.find(conn => !conn.inUse);
-    if (available) {
-      available.inUse = true;
-      available.lastUsed = Date.now();
-      return available.raw;
-    }
-
-    // 如果未達最大連線數，建立新連線
-    if (this.connections.length < this.config.maxConnections) {
-      await this.addConnection();
-      const newConnection = this.connections[this.connections.length - 1];
-      newConnection.inUse = true;
-      return newConnection.raw;
-    }
-
-    // 等待連線釋放
-    return new Promise<any>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const index = this.acquireQueue.findIndex(item => item.resolve === resolve);
-        if (index !== -1) {
-          this.acquireQueue.splice(index, 1);
-        }
-        reject(new Error('取得連線超時'));
-      }, this.config.acquireTimeout);
-
-      this.acquireQueue.push({ resolve, reject, timeout });
-    });
-  }
-
-  async release(rawConnection: any): Promise<void> {
-    const poolConnection = this.connections.find(conn => conn.raw === rawConnection);
-    if (!poolConnection) {
-      console.warn('嘗試釋放未知連線');
-      return;
-    }
-
-    poolConnection.inUse = false;
-    poolConnection.lastUsed = Date.now();
-
-    // 處理等待中的請求
-    if (this.acquireQueue.length > 0) {
-      const waiter = this.acquireQueue.shift()!;
-      clearTimeout(waiter.timeout);
-      poolConnection.inUse = true;
-      waiter.resolve(poolConnection.raw);
-    } else {
-      this.startIdleTimer(poolConnection);
-    }
-  }
-
-  private startIdleTimer(connection: PoolConnection): void {
-    setTimeout(() => {
-      if (!connection.inUse &&
-          Date.now() - connection.lastUsed > this.config.idleTimeout! &&
-          this.connections.length > (this.config.minConnections || 1)) {
-        this.removeConnection(connection);
-      }
-    }, this.config.idleTimeout);
-  }
-
-  private async removeConnection(connection: PoolConnection): Promise<void> {
-    const index = this.connections.indexOf(connection);
-    if (index !== -1) {
-      this.connections.splice(index, 1);
-      try {
-        await this.closeConnection(connection.raw);
-      } catch (error) {
-        console.error('關閉連線失敗:', error);
-      }
-    }
-  }
-
-  private closeConnection(connection: any): Promise<void> {
-    // 由子類別實作
-    return Promise.resolve();
-  }
-
-  async close(): Promise<void> {
-    this.active = false;
-
-    // 清除等待佇列
-    for (const waiter of this.acquireQueue) {
-      clearTimeout(waiter.timeout);
-      waiter.reject(new Error('連線池已關閉'));
-    }
-    this.acquireQueue = [];
-
-    // 關閉所有連線
-    for (const connection of this.connections) {
-      try {
-        await this.closeConnection(connection.raw);
-      } catch (error) {
-        console.error('關閉連線失敗:', error);
-      }
-    }
-    this.connections = [];
-  }
-
-  isActive(): boolean {
-    return this.active;
-  }
-
-  getStatus(): ConnectionPoolStatus {
-    const activeConnections = this.connections.filter(conn => conn.inUse).length;
-    return {
-      totalConnections: this.connections.length,
-      activeConnections,
-      idleConnections: this.connections.length - activeConnections,
-      maxConnections: this.config.maxConnections
-    };
-  }
-}
-
-interface PoolConnection {
-  raw: any;
-  inUse: boolean;
-  createdAt: number;
-  lastUsed: number;
-}
-```
-
-## 註冊自訂 Provider
-
-### 動態註冊
+### Dynamic Registration
 
 ```typescript
 import { DataGateway } from '@wfp99/data-gateway';
 import { MemoryProvider } from './providers/MemoryProvider';
 import { RestProvider } from './providers/RestProvider';
 
-// 註冊自訂 Provider 類型
+// Register custom provider types
 declare module '@wfp99/data-gateway' {
   interface ProviderTypeMap {
     memory: MemoryProvider;
@@ -926,12 +654,12 @@ declare module '@wfp99/data-gateway' {
   }
 }
 
-// 使用自訂 Provider
+// Use custom providers
 const gateway = await DataGateway.build({
   providers: {
     memoryStore: {
-      type: 'memory' as any,  // 自訂類型
-      provider: new MemoryProvider()  // 直接提供實例
+      type: 'memory' as any,  // Custom type
+      provider: new MemoryProvider()  // Provide instance directly
     },
 
     apiService: {
@@ -954,7 +682,7 @@ const gateway = await DataGateway.build({
 });
 ```
 
-### Factory 模式註冊
+### Factory Pattern Registration
 
 ```typescript
 // Provider Factory
@@ -971,7 +699,7 @@ export class ProviderFactory {
   static create(type: string, options?: any): DataProvider {
     const ProviderClass = this.providers.get(type);
     if (!ProviderClass) {
-      throw new Error(`未知的 Provider 類型: ${type}`);
+      throw new Error(`Unknown provider type: ${type}`);
     }
     return new ProviderClass(options);
   }
@@ -981,18 +709,18 @@ export class ProviderFactory {
   }
 }
 
-// 註冊自訂 Provider
+// Register custom providers
 ProviderFactory.register('memory', MemoryProvider);
 ProviderFactory.register('rest', RestProvider);
 
-// 使用 Factory 建立 Provider
+// Create providers using factory
 const memoryProvider = ProviderFactory.create('memory');
 const restProvider = ProviderFactory.create('rest', {
   baseURL: 'https://api.example.com',
   auth: { type: 'bearer', token: 'your-token' }
 });
 
-// 在 DataGateway 中使用
+// Use in DataGateway
 const gateway = await DataGateway.build({
   providers: {
     cache: { provider: memoryProvider },
@@ -1005,205 +733,9 @@ const gateway = await DataGateway.build({
 });
 ```
 
-## 高級功能實作
+## Testing Custom Providers
 
-### 中介軟體支援
-
-```typescript
-export interface ProviderMiddleware {
-  name: string;
-  before?: (operation: string, table: string, data?: any) => Promise<void>;
-  after?: (operation: string, table: string, result: any) => Promise<any>;
-  error?: (operation: string, table: string, error: Error) => Promise<void>;
-}
-
-export abstract class MiddlewareProvider implements DataProvider {
-  private middlewares: ProviderMiddleware[] = [];
-
-  addMiddleware(middleware: ProviderMiddleware): void {
-    this.middlewares.push(middleware);
-  }
-
-  removeMiddleware(name: string): void {
-    const index = this.middlewares.findIndex(m => m.name === name);
-    if (index !== -1) {
-      this.middlewares.splice(index, 1);
-    }
-  }
-
-  protected async executeWithMiddleware<T>(
-    operation: string,
-    table: string,
-    executor: () => Promise<T>,
-    data?: any
-  ): Promise<T> {
-    // Before middlewares
-    for (const middleware of this.middlewares) {
-      if (middleware.before) {
-        await middleware.before(operation, table, data);
-      }
-    }
-
-    try {
-      let result = await executor();
-
-      // After middlewares
-      for (const middleware of this.middlewares) {
-        if (middleware.after) {
-          result = await middleware.after(operation, table, result);
-        }
-      }
-
-      return result;
-    } catch (error) {
-      // Error middlewares
-      for (const middleware of this.middlewares) {
-        if (middleware.error) {
-          await middleware.error(operation, table, error);
-        }
-      }
-      throw error;
-    }
-  }
-
-  // 範例實作
-  async insert(table: string, data: Record<string, any>): Promise<any> {
-    return this.executeWithMiddleware('insert', table, async () => {
-      return await this.doInsert(table, data);
-    }, data);
-  }
-
-  protected abstract doInsert(table: string, data: Record<string, any>): Promise<any>;
-  // ... 其他方法
-}
-
-// 使用範例
-const loggingMiddleware: ProviderMiddleware = {
-  name: 'logging',
-  before: async (operation, table, data) => {
-    console.log(`[${new Date().toISOString()}] ${operation.toUpperCase()} ${table}`, data ? { data } : '');
-  },
-  after: async (operation, table, result) => {
-    console.log(`[${new Date().toISOString()}] ${operation.toUpperCase()} ${table} completed`, { result });
-    return result;
-  },
-  error: async (operation, table, error) => {
-    console.error(`[${new Date().toISOString()}] ${operation.toUpperCase()} ${table} failed:`, error.message);
-  }
-};
-
-const cachingMiddleware: ProviderMiddleware = {
-  name: 'caching',
-  after: async (operation, table, result) => {
-    if (operation === 'findOne' || operation === 'findMany') {
-      // 快取查詢結果
-      await cache.set(`${table}:${operation}`, result, { ttl: 300 });
-    }
-    return result;
-  }
-};
-
-// 套用中介軟體
-provider.addMiddleware(loggingMiddleware);
-provider.addMiddleware(cachingMiddleware);
-```
-
-### 交易支援
-
-```typescript
-export interface Transaction {
-  id: string;
-  begin(): Promise<void>;
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
-  isActive(): boolean;
-}
-
-export abstract class TransactionalProvider extends MiddlewareProvider {
-  private transactions = new Map<string, Transaction>();
-
-  async beginTransaction(): Promise<string> {
-    const transactionId = this.generateTransactionId();
-    const transaction = await this.createTransaction(transactionId);
-
-    this.transactions.set(transactionId, transaction);
-    await transaction.begin();
-
-    return transactionId;
-  }
-
-  async commitTransaction(transactionId: string): Promise<void> {
-    const transaction = this.transactions.get(transactionId);
-    if (!transaction) {
-      throw new Error(`交易不存在: ${transactionId}`);
-    }
-
-    await transaction.commit();
-    this.transactions.delete(transactionId);
-  }
-
-  async rollbackTransaction(transactionId: string): Promise<void> {
-    const transaction = this.transactions.get(transactionId);
-    if (!transaction) {
-      throw new Error(`交易不存在: ${transactionId}`);
-    }
-
-    await transaction.rollback();
-    this.transactions.delete(transactionId);
-  }
-
-  async withTransaction<T>(callback: (transactionId: string) => Promise<T>): Promise<T> {
-    const transactionId = await this.beginTransaction();
-
-    try {
-      const result = await callback(transactionId);
-      await this.commitTransaction(transactionId);
-      return result;
-    } catch (error) {
-      await this.rollbackTransaction(transactionId);
-      throw error;
-    }
-  }
-
-  protected abstract createTransaction(id: string): Promise<Transaction>;
-  protected abstract generateTransactionId(): string;
-
-  // 修改操作方法以支援交易
-  protected async doInsert(
-    table: string,
-    data: Record<string, any>,
-    transactionId?: string
-  ): Promise<any> {
-    const transaction = transactionId ? this.transactions.get(transactionId) : null;
-    return await this.performInsert(table, data, transaction);
-  }
-
-  protected abstract performInsert(
-    table: string,
-    data: Record<string, any>,
-    transaction?: Transaction | null
-  ): Promise<any>;
-}
-
-// 使用範例
-await provider.withTransaction(async (transactionId) => {
-  const userId = await userRepo.insert({
-    name: 'John Doe',
-    email: 'john@example.com'
-  }, { transactionId });
-
-  await orderRepo.insert({
-    user_id: userId,
-    total: 100
-  }, { transactionId });
-
-  // 如果任何操作失敗，交易會自動回滾
-});
-```
-
-## 測試自訂 Provider
-
-### 單元測試範例
+### Unit Test Example
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -1221,14 +753,14 @@ describe('MemoryProvider', () => {
     await provider.disconnect();
   });
 
-  it('應該正確連線和中斷連線', async () => {
+  it('should connect and disconnect properly', async () => {
     expect(provider.isConnected()).toBe(true);
 
     await provider.disconnect();
     expect(provider.isConnected()).toBe(false);
   });
 
-  it('應該能夠插入和查詢資料', async () => {
+  it('should insert and query data', async () => {
     const userData = { name: 'John Doe', email: 'john@example.com' };
     const id = await provider.insert('users', userData);
 
@@ -1244,13 +776,13 @@ describe('MemoryProvider', () => {
     expect(user?.id).toBe(id);
   });
 
-  it('應該支援複雜查詢條件', async () => {
-    // 插入測試資料
+  it('should support complex query conditions', async () => {
+    // Insert test data
     await provider.insert('users', { name: 'Alice', age: 25, department: 'Engineering' });
     await provider.insert('users', { name: 'Bob', age: 30, department: 'Marketing' });
     await provider.insert('users', { name: 'Charlie', age: 35, department: 'Engineering' });
 
-    // 測試 AND 條件
+    // Test AND conditions
     const engineeringUsers = await provider.findMany('users', {
       and: [
         { field: 'department', op: '=', value: 'Engineering' },
@@ -1261,153 +793,15 @@ describe('MemoryProvider', () => {
     expect(engineeringUsers).toHaveLength(1);
     expect(engineeringUsers[0].name).toBe('Charlie');
   });
-
-  it('應該正確處理更新操作', async () => {
-    const id = await provider.insert('users', { name: 'John', email: 'john@example.com' });
-
-    const updatedRows = await provider.update('users',
-      { email: 'john.doe@example.com' },
-      { field: 'id', op: '=', value: id }
-    );
-
-    expect(updatedRows).toBe(1);
-
-    const user = await provider.findOne('users', {
-      field: 'id',
-      op: '=',
-      value: id
-    });
-
-    expect(user?.email).toBe('john.doe@example.com');
-  });
-
-  it('應該正確處理刪除操作', async () => {
-    const id = await provider.insert('users', { name: 'John', email: 'john@example.com' });
-
-    const deletedRows = await provider.delete('users', {
-      field: 'id',
-      op: '=',
-      value: id
-    });
-
-    expect(deletedRows).toBe(1);
-
-    const user = await provider.findOne('users', {
-      field: 'id',
-      op: '=',
-      value: id
-    });
-
-    expect(user).toBeNull();
-  });
-
-  it('應該支援分頁查詢', async () => {
-    // 插入多筆資料
-    for (let i = 1; i <= 10; i++) {
-      await provider.insert('users', { name: `User ${i}`, age: 20 + i });
-    }
-
-    const result = await provider.find('users', {
-      orderBy: [{ field: 'age', direction: 'ASC' }],
-      limit: 3,
-      offset: 2
-    });
-
-    expect(result.rows).toHaveLength(3);
-    expect(result.totalCount).toBe(10);
-    expect(result.rows[0].name).toBe('User 3');
-  });
 });
 ```
 
-### 整合測試範例
+## Best Practices
+
+### 1. Error Handling
 
 ```typescript
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { DataGateway } from '@wfp99/data-gateway';
-import { MemoryProvider } from '../src/providers/MemoryProvider';
-
-describe('DataGateway with MemoryProvider', () => {
-  let gateway: DataGateway;
-
-  beforeAll(async () => {
-    gateway = await DataGateway.build({
-      providers: {
-        memory: {
-          provider: new MemoryProvider()
-        }
-      },
-      repositories: {
-        users: { provider: 'memory', table: 'users' },
-        orders: { provider: 'memory', table: 'orders' }
-      }
-    });
-  });
-
-  afterAll(async () => {
-    await gateway.disconnectAll();
-  });
-
-  it('應該透過 Repository 正確操作資料', async () => {
-    const userRepo = gateway.getRepository('users');
-
-    // 插入使用者
-    const userId = await userRepo?.insert({
-      name: 'Test User',
-      email: 'test@example.com'
-    });
-
-    expect(userId).toBeDefined();
-
-    // 查詢使用者
-    const users = await userRepo?.findMany({
-      field: 'name',
-      op: '=',
-      value: 'Test User'
-    });
-
-    expect(users).toHaveLength(1);
-    expect(users?.[0].email).toBe('test@example.com');
-  });
-
-  it('應該支援跨 Repository 操作', async () => {
-    const userRepo = gateway.getRepository('users');
-    const orderRepo = gateway.getRepository('orders');
-
-    // 建立使用者
-    const userId = await userRepo?.insert({
-      name: 'Customer',
-      email: 'customer@example.com'
-    });
-
-    // 建立訂單
-    const orderId = await orderRepo?.insert({
-      user_id: userId,
-      total: 100,
-      status: 'pending'
-    });
-
-    expect(orderId).toBeDefined();
-
-    // 查詢使用者的訂單
-    const orders = await orderRepo?.findMany({
-      field: 'user_id',
-      op: '=',
-      value: userId
-    });
-
-    expect(orders).toHaveLength(1);
-    expect(orders?.[0].total).toBe(100);
-  });
-});
-```
-
-## 最佳實踐
-
-### 1. 錯誤處理
-
-```typescript
-// 定義特定的錯誤類型
+// Define specific error types
 export class ProviderError extends Error {
   constructor(
     message: string,
@@ -1431,117 +825,37 @@ export class QueryError extends ProviderError {
     super(message, 'QUERY_ERROR', operation, table);
   }
 }
-
-// 在 Provider 中使用
-async insert(table: string, data: Record<string, any>): Promise<any> {
-  try {
-    // 實作插入邏輯
-    return result;
-  } catch (error) {
-    throw new QueryError(`插入 ${table} 失敗: ${error.message}`, 'insert', table);
-  }
-}
 ```
 
-### 2. 資料驗證
+### 2. Configuration Validation
 
 ```typescript
-// 資料驗證中介軟體
-const validationMiddleware: ProviderMiddleware = {
-  name: 'validation',
-  before: async (operation, table, data) => {
-    if (operation === 'insert' || operation === 'update') {
-      await validateData(table, data);
-    }
-  }
-};
-
-async function validateData(table: string, data: Record<string, any>): Promise<void> {
-  const schema = getTableSchema(table);
-
-  for (const [field, value] of Object.entries(data)) {
-    const fieldSchema = schema[field];
-    if (!fieldSchema) continue;
-
-    // 必填欄位檢查
-    if (fieldSchema.required && (value === null || value === undefined)) {
-      throw new Error(`欄位 ${field} 為必填`);
-    }
-
-    // 類型檢查
-    if (value !== null && value !== undefined) {
-      if (fieldSchema.type === 'string' && typeof value !== 'string') {
-        throw new Error(`欄位 ${field} 必須為字串類型`);
-      }
-      if (fieldSchema.type === 'number' && typeof value !== 'number') {
-        throw new Error(`欄位 ${field} 必須為數字類型`);
-      }
-    }
-  }
-}
-```
-
-### 3. 效能監控
-
-```typescript
-// 效能監控中介軟體
-const performanceMiddleware: ProviderMiddleware = {
-  name: 'performance',
-  before: async (operation, table, data) => {
-    (data as any).__startTime = Date.now();
-  },
-  after: async (operation, table, result) => {
-    const startTime = (result as any).__startTime;
-    if (startTime) {
-      const duration = Date.now() - startTime;
-      console.log(`${operation} ${table} 耗時: ${duration}ms`);
-
-      // 記錄慢查詢
-      if (duration > 1000) {
-        console.warn(`慢查詢警告: ${operation} ${table} 耗時 ${duration}ms`);
-      }
-    }
-    return result;
-  }
-};
-```
-
-### 4. 設定驗證
-
-```typescript
-// Provider 選項驗證
+// Provider options validation
 export function validateProviderOptions(options: any): void {
   if (!options) {
-    throw new Error('Provider 選項不能為空');
+    throw new Error('Provider options cannot be empty');
   }
 
-  // 驗證必要欄位
+  // Validate required fields
   const requiredFields = ['host', 'port', 'database'];
   for (const field of requiredFields) {
     if (!options[field]) {
-      throw new Error(`缺少必要設定: ${field}`);
+      throw new Error(`Missing required configuration: ${field}`);
     }
   }
 
-  // 驗證數值範圍
+  // Validate value ranges
   if (options.port && (options.port < 1 || options.port > 65535)) {
-    throw new Error('連接埠必須在 1-65535 範圍內');
-  }
-
-  // 驗證連線池設定
-  if (options.pool) {
-    if (options.pool.maxConnections && options.pool.maxConnections < 1) {
-      throw new Error('最大連線數必須大於 0');
-    }
+    throw new Error('Port must be in range 1-65535');
   }
 }
 ```
 
-### 5. 文件範例
+### 3. Documentation Example
 
 ```typescript
 /**
- * 自訂 MongoDB Provider
+ * Custom MongoDB Provider
  *
  * @example
  * ```typescript
@@ -1565,30 +879,28 @@ export function validateProviderOptions(options: any): void {
  */
 export class MongoProvider implements DataProvider {
   /**
-   * 建立 MongoDB Provider 實例
-   * @param options MongoDB 連線選項
+   * Create MongoDB Provider instance
+   * @param options MongoDB connection options
    */
   constructor(private options: MongoProviderOptions) {
     validateProviderOptions(options);
   }
 
   /**
-   * 插入單筆文件
-   * @param table 集合名稱
-   * @param data 要插入的資料
-   * @returns 插入的文件 ID
+   * Insert a single document
+   * @param table Collection name
+   * @param data Data to insert
+   * @returns Inserted document ID
    */
   async insert(table: string, data: Record<string, any>): Promise<any> {
-    // 實作...
+    // Implementation...
   }
 
-  // ... 其他方法
+  // ... other methods
 }
 ```
 
-## 相關連結
+## Related Links
 
-- [DataGateway API 文件](../api/data-gateway.md)
-- [DataProvider API 文件](../api/data-provider.md)
-- [中介軟體系統](../advanced/middleware.md)
-- [連線池管理](../advanced/connection-pooling.md)
+- [DataGateway API Documentation](../api/data-gateway.md)
+- [Connection Pool Management](../advanced/connection-pooling.md)

@@ -1,48 +1,48 @@
-# 安裝與設定
+# Installation & Setup
 
-## 系統需求
+## System Requirements
 
-- **Node.js**: 18.0.0 或更高版本
-- **TypeScript**: 5.0 或更高版本（推薦，但非必需）
+- **Node.js**: 18.0.0 or higher
+- **TypeScript**: 5.0 or higher (recommended, but not required)
 
-## 核心套件安裝
+## Core Package Installation
 
 ```bash
-# 安裝 Data Gateway 核心套件
+# Install Data Gateway core package
 npm install @wfp99/data-gateway
 ```
 
-## 資料庫驅動程式安裝
+## Database Driver Installation
 
-Data Gateway 使用**懶載入 (Lazy Loading)**機制，您只需要安裝實際使用的資料庫驅動程式：
+Data Gateway uses **Lazy Loading** mechanism, so you only need to install the database drivers you actually use:
 
-### MySQL 支援
+### MySQL Support
 ```bash
 npm install mysql2
 ```
 
-### PostgreSQL 支援
+### PostgreSQL Support
 ```bash
 npm install pg @types/pg
 ```
 
-### SQLite 支援
+### SQLite Support
 ```bash
 npm install sqlite3
 ```
 
-### 遠端 API 支援
-無需額外安裝，核心套件已包含 `RemoteProvider`。
+### Remote API Support
+No additional installation needed - `RemoteProvider` is included in the core package.
 
-## 懶載入的好處
+## Benefits of Lazy Loading
 
-- **只安裝需要的內容**: 程式庫使用懶載入技術，只在實際使用時才匯入資料庫提供者
-- **無強制依賴**: 您可以在不安裝任何資料庫驅動程式的情況下使用 `RemoteProvider`
-- **減少套件大小**: 避免安裝不必要的相依套件
+- **Install only what you need**: The library uses lazy loading to import database providers only when actually used
+- **No forced dependencies**: You can use `RemoteProvider` without installing any database drivers
+- **Reduced package size**: Avoid installing unnecessary dependencies
 
-## 驗證安裝
+## Verify Installation
 
-創建一個簡單的測試檔案來驗證安裝是否成功：
+Create a simple test file to verify the installation:
 
 ```typescript
 // test-installation.ts
@@ -65,46 +65,46 @@ const config = {
 async function testInstallation() {
   try {
     const gateway = await DataGateway.build(config);
-    console.log('✅ Data Gateway 安裝成功！');
+    console.log('✅ Data Gateway installed successfully!');
     await gateway.disconnectAll();
   } catch (error) {
-    console.error('❌ 安裝驗證失敗:', error);
+    console.error('❌ Installation verification failed:', error);
   }
 }
 
 testInstallation();
 ```
 
-執行測試：
+Run the test:
 ```bash
 npx ts-node test-installation.ts
-# 或如果使用 JavaScript
+# or if using JavaScript
 node test-installation.js
 ```
 
-## 常見安裝問題
+## Common Installation Issues
 
-### 問題 1: TypeScript 類型錯誤
-**解決方案**: 確保安裝了對應的類型定義
+### Issue 1: TypeScript Type Errors
+**Solution**: Make sure you have the corresponding type definitions installed
 ```bash
-npm install @types/node @types/pg  # 如果使用 PostgreSQL
+npm install @types/node @types/pg  # if using PostgreSQL
 ```
 
-### 問題 2: 模組找不到錯誤
-**解決方案**: 檢查是否安裝了正確的資料庫驅動程式
+### Issue 2: Module Not Found Errors
+**Solution**: Check if you have installed the correct database drivers
 ```bash
-# 檢查已安裝的套件
+# Check installed packages
 npm list mysql2 pg sqlite sqlite3
 ```
 
-### 問題 3: Node.js 版本過低
-**解決方案**: 升級到 Node.js 18.0.0 或更高版本
+### Issue 3: Node.js Version Too Low
+**Solution**: Upgrade to Node.js 18.0.0 or higher
 ```bash
-node --version  # 檢查當前版本
+node --version  # Check current version
 ```
 
-## 下一步
+## Next Steps
 
-安裝完成後，請繼續閱讀：
-- [快速入門指南](./quick-start.md)
-- [基本使用方法](./basic-usage.md)
+After installation, continue with:
+- [Quick Start Guide](./quick-start.md)
+- [Basic Usage](./basic-usage.md)

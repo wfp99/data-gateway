@@ -1,24 +1,24 @@
 # SQLite Provider
 
-SQLite Provider is a Data Gateway data provider specifically designed for SQLite databases. It implements the `DataProvider` interface and supports file and in-memory databases, connection pooling, and efficient query building.
+SQLite Provider 是專為 SQLite 資料庫設計的 Data Gateway 資料提供者。它實現了 `DataProvider` 介面，支援檔案和記憶體資料庫、連線池以及高效的查詢建構。
 
-## Installation
+## 安裝
 
-SQLite Provider requires the `@sqlite/sqlite3` package as a peer dependency:
+SQLite Provider 需要 `@sqlite/sqlite3` 套件作為同級依賴：
 
 ```bash
 npm install @sqlite/sqlite3
 ```
 
-For development environments, you can also use `sqlite3`:
+對於開發環境，也可以使用 `sqlite3`：
 
 ```bash
 npm install sqlite3
 ```
 
-## Basic Usage
+## 基本使用
 
-### File Database Configuration
+### 檔案資料庫設定
 
 ```typescript
 import { DataGateway } from '@wfp99/data-gateway';
@@ -28,8 +28,8 @@ const gateway = await DataGateway.build({
     sqlite: {
       type: 'sqlite',
       options: {
-        filename: './database.db',  // Database file path
-        // Optional settings
+        filename: './database.db',  // 資料庫檔案路徑
+        // 可選設定
         mode: 'OPEN_READWRITE | OPEN_CREATE',
         verbose: false
       },
@@ -44,7 +44,7 @@ const gateway = await DataGateway.build({
 });
 ```
 
-### In-Memory Database Configuration
+### 記憶體資料庫設定
 
 ```typescript
 const gateway = await DataGateway.build({
@@ -52,8 +52,8 @@ const gateway = await DataGateway.build({
     sqlite: {
       type: 'sqlite',
       options: {
-        filename: ':memory:',  // In-memory database
-        verbose: true         // Enable verbose logging for development
+        filename: ':memory:',  // 記憶體資料庫
+        verbose: true         // 開發時可啟用詳細日誌
       },
     },
   },
@@ -64,9 +64,9 @@ const gateway = await DataGateway.build({
 });
 ```
 
-### Read Pool Configuration
+### 讀取池設定
 
-SQLite Provider supports read connection pooling, suitable for read-intensive applications:
+SQLite Provider 支援讀取連線池，適合讀取密集的應用：
 
 ```typescript
 const gateway = await DataGateway.build({
@@ -76,12 +76,12 @@ const gateway = await DataGateway.build({
       options: {
         filename: './app.db',
         pool: {
-          usePool: true,              // Enable read connection pool
-          readPoolSize: 5,           // Read pool size (default: 3)
-          writeConnection: 'single', // Write connection mode (default: 'single')
-          acquireTimeout: 30000,     // Connection acquire timeout (default: 30000ms)
-          idleTimeout: 300000,       // Idle connection timeout (default: 300000ms)
-          preConnect: false,         // Pre-establish connections at startup (default: false)
+          usePool: true,              // 啟用讀取連線池
+          readPoolSize: 5,           // 讀取連線池大小（預設：3）
+          writeConnection: 'single', // 寫入連線模式（預設：'single'）
+          acquireTimeout: 30000,     // 連線取得超時（預設：30000ms）
+          idleTimeout: 300000,       // 閒置連線超時（預設：300000ms）
+          preConnect: false,         // 啟動時預先建立連線（預設：false）
         },
       },
     },
@@ -92,37 +92,37 @@ const gateway = await DataGateway.build({
 });
 ```
 
-## Connection Options
+## 連線選項
 
-SQLite Provider supports various connection options:
+SQLite Provider 支援多種連線選項：
 
 ```typescript
 interface SQLiteProviderOptions {
-  // Database file path
-  filename: string;  // File path or ':memory:' or ':memory:shared'
+  // 資料庫檔案路徑
+  filename: string;  // 檔案路徑或 ':memory:' 或 ':memory:shared'
 
-  // Open mode
-  mode?: string;     // 'OPEN_READONLY' | 'OPEN_READWRITE' | 'OPEN_CREATE' etc.
+  // 開啟模式
+  mode?: string;     // 'OPEN_READONLY' | 'OPEN_READWRITE' | 'OPEN_CREATE' 等
 
-  // Debug options
-  verbose?: boolean; // Enable SQL statement logging
+  // 除錯選項
+  verbose?: boolean; // 啟用 SQL 語句日誌
 
-  // Connection pool settings (read pool only)
+  // 連線池設定（僅讀取池）
   pool?: {
-    usePool: boolean;              // Whether to enable read connection pool
-    readPoolSize?: number;         // Read pool size (default: 3)
-    writeConnection?: 'single';    // Write connection mode (only 'single' supported)
-    acquireTimeout?: number;       // Connection acquire timeout (default: 30000ms)
-    idleTimeout?: number;          // Idle connection timeout (default: 300000ms)
-    preConnect?: boolean;          // Pre-establish connections at startup (default: false)
+    usePool: boolean;              // 是否啟用讀取連線池
+    readPoolSize?: number;         // 讀取連線池大小（預設：3）
+    writeConnection?: 'single';    // 寫入連線模式（僅支援 'single'）
+    acquireTimeout?: number;       // 連線取得超時（預設：30000ms）
+    idleTimeout?: number;          // 閒置連線超時（預設：300000ms）
+    preConnect?: boolean;          // 啟動時預先建立連線（預設：false）
   };
 }
 ```
 
-### File Mode Descriptions
+### 檔案模式說明
 
 ```typescript
-// Read-only mode
+// 唯讀模式
 sqlite: {
   type: 'sqlite',
   options: {
@@ -131,54 +131,54 @@ sqlite: {
   }
 }
 
-// Read-write mode (create if not exists)
+// 讀寫模式（如果不存在則建立）
 sqlite: {
   type: 'sqlite',
   options: {
     filename: './readwrite.db',
-    mode: 'OPEN_READWRITE | OPEN_CREATE'  // Default mode
+    mode: 'OPEN_READWRITE | OPEN_CREATE'  // 預設模式
   }
 }
 
-// Shared cache in-memory database
+// 共享快取記憶體資料庫
 sqlite: {
   type: 'sqlite',
   options: {
-    filename: ':memory:shared',  // Multiple connections share same in-memory database
+    filename: ':memory:shared',  // 多個連線共享同一記憶體資料庫
     mode: 'OPEN_READWRITE | OPEN_CREATE'
   }
 }
 ```
 
-## Query Features
+## 查詢功能
 
-### Basic CRUD Operations
+### 基本 CRUD 操作
 
 ```typescript
 const userRepo = gateway.getRepository('users');
 
-// Create user (SQLite auto-generates rowid)
+// 建立使用者（SQLite 自動生成 rowid）
 const userId = await userRepo.insert({
   name: 'John Doe',
   email: 'john@example.com',
   age: 30,
-  created_at: Date.now()  // SQLite supports Unix timestamps
+  created_at: Date.now()  // SQLite 支援 Unix 時間戳
 });
 
-// Query users
+// 查詢使用者
 const users = await userRepo.findMany({
   field: 'age',
   op: '>',
   value: 18,
 });
 
-// Update user
+// 更新使用者
 const updatedRows = await userRepo.update(
   { email: 'john.doe@example.com', updated_at: Date.now() },
   { field: 'rowid', op: '=', value: userId }
 );
 
-// Delete user
+// 刪除使用者
 const deletedRows = await userRepo.delete({
   field: 'rowid',
   op: '=',
@@ -186,42 +186,42 @@ const deletedRows = await userRepo.delete({
 });
 ```
 
-### SQLite-Specific Queries
+### SQLite 特有查詢
 
 ```typescript
-// Using GLOB pattern matching (SQLite-specific)
+// 使用 GLOB 模式匹配（SQLite 特有）
 const users = await userRepo.findMany({
   field: 'name',
   op: 'GLOB',
   value: 'John*'
 });
 
-// Using REGEXP (requires REGEXP extension)
+// 使用 REGEXP（需要啟用 REGEXP 擴展）
 const emailUsers = await userRepo.findMany({
   field: 'email',
   op: 'REGEXP',
   value: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
 });
 
-// JSON queries (SQLite 3.45+)
+// JSON 查詢（SQLite 3.45+）
 const userPrefs = await userRepo.findMany({
   field: 'preferences',
   op: '->>',
-  value: '$.theme'  // JSON path query
+  value: '$.theme'  // JSON 路徑查詢
 });
 ```
 
-### Complex Queries
+### 複雜查詢
 
 ```typescript
-// Full-text search (requires FTS5 extension)
+// 全文搜索（需要 FTS5 擴展）
 const searchResults = await gateway.query(`
   SELECT * FROM users_fts
   WHERE users_fts MATCH ?
   ORDER BY rank
 `, ['John OR engineer']);
 
-// Window function queries
+// 視窗函數查詢
 const rankedUsers = await gateway.query(`
   SELECT
     name,
@@ -249,10 +249,10 @@ const departmentHierarchy = await gateway.query(`
 `);
 ```
 
-### Aggregation and Statistics
+### 聚合和統計
 
 ```typescript
-// Basic statistics
+// 基本統計
 const stats = await userRepo.find({
   fields: [
     { type: 'COUNT', field: '*', alias: 'total_users' },
@@ -262,7 +262,7 @@ const stats = await userRepo.find({
   ]
 });
 
-// Grouped statistics
+// 分組統計
 const departmentStats = await userRepo.find({
   fields: [
     'department',
@@ -274,7 +274,7 @@ const departmentStats = await userRepo.find({
   orderBy: [{ field: 'avg_salary', direction: 'DESC' }]
 });
 
-// Median calculation (SQLite-specific function)
+// 中位數計算（SQLite 特有函數）
 const medianSalary = await gateway.query(`
   SELECT
     department,
@@ -292,57 +292,57 @@ const medianSalary = await gateway.query(`
 `);
 ```
 
-## Read Connection Pool
+## 讀取連線池
 
-SQLite Provider's read connection pool is designed for read-intensive applications:
+SQLite Provider 的讀取連線池專為讀取密集型應用設計：
 
 ```typescript
-// High read load configuration
+// 高讀取負載設定
 sqlite: {
   type: 'sqlite',
   options: {
     filename: './high_read_load.db',
     pool: {
       usePool: true,
-      readPoolSize: 10,          // Increase read connections
-      acquireTimeout: 5000,      // Shorter acquire timeout
-      idleTimeout: 60000,        // Shorter idle timeout
-      preConnect: true           // Pre-establish connections
+      readPoolSize: 10,          // 增加讀取連線數
+      acquireTimeout: 5000,      // 較短的取得超時
+      idleTimeout: 60000,        // 較短的閒置超時
+      preConnect: true           // 預先建立連線
     }
   }
 }
 
-// Monitor read pool status
+// 監控讀取池狀態
 const poolStatus = gateway.getProviderPoolStatus('sqlite');
 if (poolStatus) {
-  console.log('SQLite Read Pool Status:');
-  console.log(`Active read connections: ${poolStatus.activeConnections}`);
-  console.log(`Idle read connections: ${poolStatus.idleConnections}`);
-  console.log(`Total read connections: ${poolStatus.totalConnections}`);
-  console.log(`Max read connections: ${poolStatus.maxConnections}`);
+  console.log('SQLite 讀取池狀態:');
+  console.log(`活躍讀取連線: ${poolStatus.activeConnections}`);
+  console.log(`閒置讀取連線: ${poolStatus.idleConnections}`);
+  console.log(`總讀取連線: ${poolStatus.totalConnections}`);
+  console.log(`最大讀取連線: ${poolStatus.maxConnections}`);
 }
 
-// Read/write operation examples
+// 讀寫操作示例
 const userRepo = gateway.getRepository('users');
 
-// Write operation (uses single write connection)
+// 寫入操作（使用單一寫入連線）
 await userRepo.insert({ name: 'New User', email: 'new@example.com' });
 
-// Read operations (use read connections from pool)
+// 讀取操作（使用連線池中的讀取連線）
 const users = await userRepo.findMany();
 const userCount = await userRepo.find({
   fields: [{ type: 'COUNT', field: '*', alias: 'count' }]
 });
 ```
 
-## Performance Optimization
+## 效能優化
 
-### WAL Mode
+### WAL 模式
 
-SQLite Provider recommends using WAL (Write-Ahead Logging) mode in production:
+SQLite Provider 建議在生產環境中使用 WAL (Write-Ahead Logging) 模式：
 
 ```typescript
-// Enable WAL mode (improves concurrent performance)
+// 啟用 WAL 模式（提升並發效能）
 const gateway = await DataGateway.build({
   providers: {
     sqlite: {
@@ -358,7 +358,7 @@ const gateway = await DataGateway.build({
   }
 });
 
-// Set WAL mode and other optimization options
+// 設定 WAL 模式和其他優化選項
 await gateway.query('PRAGMA journal_mode = WAL');
 await gateway.query('PRAGMA synchronous = NORMAL');
 await gateway.query('PRAGMA cache_size = 10000');
@@ -366,46 +366,46 @@ await gateway.query('PRAGMA temp_store = MEMORY');
 await gateway.query('PRAGMA mmap_size = 268435456'); // 256MB
 ```
 
-### Index Optimization
+### 索引優化
 
 ```typescript
-// Create indexes to improve query performance
+// 建立索引提升查詢效能
 await gateway.query(`
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   CREATE INDEX IF NOT EXISTS idx_users_department_salary ON users(department, salary);
   CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at);
 `);
 
-// Composite index examples
+// 複合索引範例
 await gateway.query(`
   CREATE INDEX IF NOT EXISTS idx_users_status_dept_salary
   ON users(status, department, salary DESC);
 `);
 
-// Partial indexes (SQLite-specific)
+// 部分索引（SQLite 特有）
 await gateway.query(`
   CREATE INDEX IF NOT EXISTS idx_active_users
   ON users(email) WHERE status = 'active';
 `);
 
-// Expression indexes
+// 表達式索引
 await gateway.query(`
   CREATE INDEX IF NOT EXISTS idx_users_email_lower
   ON users(LOWER(email));
 `);
 ```
 
-### Batch Operations
+### 批次操作
 
 ```typescript
-// Batch insert optimization
+// 批次插入優化
 const users = [
   { name: 'User 1', email: 'user1@example.com' },
   { name: 'User 2', email: 'user2@example.com' },
   { name: 'User 3', email: 'user3@example.com' }
 ];
 
-// Use transaction for batch inserts
+// 使用交易批次插入
 await gateway.query('BEGIN TRANSACTION');
 try {
   for (const user of users) {
@@ -417,7 +417,7 @@ try {
   throw error;
 }
 
-// Or use batch INSERT
+// 或使用批次 INSERT
 const placeholders = users.map(() => '(?, ?)').join(', ');
 const values = users.flatMap(user => [user.name, user.email]);
 await gateway.query(`
@@ -425,78 +425,78 @@ await gateway.query(`
 `, values);
 ```
 
-### Memory Usage Optimization
+### 記憶體使用優化
 
 ```typescript
-// Memory optimization settings
-await gateway.query('PRAGMA cache_size = 2000');        // Reduce cache size
-await gateway.query('PRAGMA temp_store = FILE');        // Use file for temp tables
+// 記憶體優化設定
+await gateway.query('PRAGMA cache_size = 2000');        // 減少快取大小
+await gateway.query('PRAGMA temp_store = FILE');        // 臨時表使用檔案
 await gateway.query('PRAGMA mmap_size = 67108864');     // 64MB mmap
-await gateway.query('PRAGMA page_size = 4096');         // 4KB page size
+await gateway.query('PRAGMA page_size = 4096');         // 4KB 頁面大小
 
-// Periodic cleanup
+// 定期清理
 setInterval(async () => {
-  await gateway.query('PRAGMA optimize');               // Optimize query plans
-  await gateway.query('VACUUM');                        // Reorganize database file
-}, 3600000); // Execute every hour
+  await gateway.query('PRAGMA optimize');               // 優化查詢計劃
+  await gateway.query('VACUUM');                        // 整理資料庫檔案
+}, 3600000); // 每小時執行一次
 ```
 
-## Data Type Handling
+## 資料類型處理
 
-### SQLite Data Types
+### SQLite 資料類型
 
 ```typescript
-// SQLite dynamic typing examples
+// SQLite 動態類型範例
 await userRepo.insert({
-  // Integer
+  // 整數
   id: 1,
   age: 30,
 
-  // Real
+  // 實數
   salary: 75000.50,
   rating: 4.8,
 
-  // Text
+  // 文字
   name: 'John Doe',
   email: 'john@example.com',
 
   // BLOB
   avatar: Buffer.from('binary data'),
 
-  // Boolean (stored as integer)
-  is_active: true,    // Stored as 1
-  is_deleted: false,  // Stored as 0
+  // 布林值（存為整數）
+  is_active: true,    // 存為 1
+  is_deleted: false,  // 存為 0
 
-  // Dates (multiple formats)
-  created_at: new Date(),           // ISO string
-  updated_at: Date.now(),           // Unix timestamp
-  birth_date: '1990-01-01',         // Date string
+  // 日期（多種格式）
+  created_at: new Date(),           // ISO 字串
+  updated_at: Date.now(),           // Unix 時間戳
+  birth_date: '1990-01-01',         // 日期字串
 
-  // JSON (stored as text)
-  preferences: JSON.stringify({ theme: 'dark', lang: 'en' }),
+  // JSON（存為文字）
+  preferences: JSON.stringify({ theme: 'dark', lang: 'zh-TW' }),
 
   // NULL
   deleted_at: null
 });
 ```
 
-### Date and Time Handling
+### 日期時間處理
 
 ```typescript
-// Date and time query examples
+// 日期時間查詢範例
 const recentUsers = await userRepo.findMany({
   field: 'created_at',
   op: '>',
-  value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 days ago
+  value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 天前
 });
 
-// Using SQLite date functions
+// 使用 SQLite 日期函數
 const thisMonth = await gateway.query(`
   SELECT * FROM users
   WHERE DATE(created_at) >= DATE('now', 'start of month')
 `);
 
-// Date formatting
+// 日期格式化
 const formatted = await gateway.query(`
   SELECT
     name,
@@ -506,10 +506,10 @@ const formatted = await gateway.query(`
 `);
 ```
 
-### JSON Data Handling
+### JSON 資料處理
 
 ```typescript
-// JSON data operations (SQLite 3.45+)
+// JSON 資料操作（SQLite 3.45+）
 await userRepo.insert({
   name: 'John',
   preferences: JSON.stringify({
@@ -522,14 +522,14 @@ await userRepo.insert({
   })
 });
 
-// JSON queries
+// JSON 查詢
 const darkThemeUsers = await gateway.query(`
   SELECT name, preferences
   FROM users
   WHERE JSON_EXTRACT(preferences, '$.theme') = 'dark'
 `);
 
-// JSON array queries
+// JSON 陣列查詢
 const multilingualUsers = await gateway.query(`
   SELECT name, preferences
   FROM users
@@ -537,12 +537,12 @@ const multilingualUsers = await gateway.query(`
 `);
 ```
 
-## Full-Text Search
+## 全文搜索
 
-### FTS5 Setup
+### FTS5 設定
 
 ```typescript
-// Create FTS5 full-text search table
+// 建立 FTS5 全文搜索表
 await gateway.query(`
   CREATE VIRTUAL TABLE IF NOT EXISTS users_fts USING fts5(
     name,
@@ -553,7 +553,7 @@ await gateway.query(`
   );
 `);
 
-// Create triggers to sync data
+// 建立觸發器同步資料
 await gateway.query(`
   CREATE TRIGGER IF NOT EXISTS users_fts_insert AFTER INSERT ON users
   BEGIN
@@ -577,7 +577,7 @@ await gateway.query(`
   END;
 `);
 
-// Full-text search queries
+// 全文搜索查詢
 const searchResults = await gateway.query(`
   SELECT users.*, users_fts.rank
   FROM users_fts
@@ -586,141 +586,141 @@ const searchResults = await gateway.query(`
   ORDER BY users_fts.rank
 `, ['engineer OR developer']);
 
-// Phrase search
+// 片語搜索
 const phraseSearch = await gateway.query(`
   SELECT * FROM users_fts WHERE users_fts MATCH '"software engineer"'
 `);
 
-// Proximity search
+// 鄰近搜索
 const proximitySearch = await gateway.query(`
   SELECT * FROM users_fts WHERE users_fts MATCH 'NEAR(software engineer, 5)'
 `);
 ```
 
-## Error Handling
+## 錯誤處理
 
-SQLite Provider provides detailed error handling:
+SQLite Provider 提供詳細的錯誤處理：
 
 ```typescript
 try {
   const result = await userRepo.insert({ name: 'Test User' });
 } catch (error) {
-  console.error('SQLite operation failed:', error.message);
+  console.error('SQLite 操作失敗:', error.message);
 
   if (error.code) {
     switch (error.code) {
       case 'SQLITE_CONSTRAINT_UNIQUE':
-        console.error('Unique constraint violation');
+        console.error('唯一性約束違反');
         break;
       case 'SQLITE_CONSTRAINT_NOTNULL':
-        console.error('Not null constraint violation');
+        console.error('非空約束違反');
         break;
       case 'SQLITE_CONSTRAINT_FOREIGNKEY':
-        console.error('Foreign key constraint violation');
+        console.error('外鍵約束違反');
         break;
       case 'SQLITE_BUSY':
-        console.error('Database is busy, please retry later');
+        console.error('資料庫忙碌中，請稍後重試');
         break;
       case 'SQLITE_LOCKED':
-        console.error('Database is locked');
+        console.error('資料庫被鎖定');
         break;
       case 'SQLITE_READONLY':
-        console.error('Database is in read-only mode');
+        console.error('資料庫是唯讀模式');
         break;
       case 'SQLITE_IOERR':
-        console.error('I/O error, please check file permissions');
+        console.error('I/O 錯誤，請檢查檔案權限');
         break;
       case 'SQLITE_CORRUPT':
-        console.error('Database file is corrupted');
+        console.error('資料庫檔案損壞');
         break;
       case 'SQLITE_CANTOPEN':
-        console.error('Cannot open database file');
+        console.error('無法開啟資料庫檔案');
         break;
       default:
-        console.error('Unknown SQLite error:', error.code, error.message);
+        console.error('未知 SQLite 錯誤:', error.code, error.message);
     }
   }
 }
 ```
 
-Common error codes:
-- `SQLITE_CONSTRAINT_*`: Constraint violations
-- `SQLITE_BUSY`: Database busy
-- `SQLITE_LOCKED`: Database locked
-- `SQLITE_READONLY`: Read-only mode
-- `SQLITE_IOERR`: I/O error
-- `SQLITE_CORRUPT`: File corruption
-- `SQLITE_CANTOPEN`: Cannot open file
+常見錯誤代碼：
+- `SQLITE_CONSTRAINT_*`: 約束違反
+- `SQLITE_BUSY`: 資料庫忙碌
+- `SQLITE_LOCKED`: 資料庫被鎖定
+- `SQLITE_READONLY`: 唯讀模式
+- `SQLITE_IOERR`: I/O 錯誤
+- `SQLITE_CORRUPT`: 檔案損壞
+- `SQLITE_CANTOPEN`: 無法開啟檔案
 
-## Security Considerations
+## 安全性考量
 
-### File Permissions
+### 檔案權限
 
 ```typescript
-// Set appropriate file permissions
+// 設定適當的檔案權限
 import fs from 'fs';
 import path from 'path';
 
 const dbPath = './app.db';
 const dbDir = path.dirname(dbPath);
 
-// Ensure directory exists
+// 確保目錄存在
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { mode: 0o750, recursive: true });
 }
 
-// Set database file permissions
+// 設定資料庫檔案權限
 if (fs.existsSync(dbPath)) {
   fs.chmodSync(dbPath, 0o640);  // rw-r-----
 }
 ```
 
-### Parameterized Queries
+### 參數化查詢
 
 ```typescript
-// SQLite Provider automatically uses parameterized queries
+// SQLite Provider 自動使用參數化查詢
 const safeQuery = await userRepo.findMany({
   field: 'email',
   op: '=',
-  value: userInput  // Automatically escaped, prevents SQL injection
+  value: userInput  // 自動轉義，防止 SQL 注入
 });
 
-// Custom queries should also use parameters
+// 自定義查詢也應使用參數
 const customResult = await gateway.query(`
   SELECT * FROM users
   WHERE department = ? AND salary > ?
-`, [userDepartment, minSalary]);  // Parameterized query
+`, [userDepartment, minSalary]);  // 參數化查詢
 ```
 
-### Access Control
+### 存取控制
 
 ```typescript
-// Restrict file access
+// 限制檔案存取
 const secureConfig = {
   providers: {
     sqlite: {
       type: 'sqlite',
       options: {
         filename: process.env.DB_PATH || './secure.db',
-        mode: 'OPEN_READWRITE',  // Don't auto-create files
+        mode: 'OPEN_READWRITE',  // 不自動建立檔案
         verbose: process.env.NODE_ENV === 'development'
       }
     }
   }
 };
 
-// Separate development and production environments
+// 開發與生產環境分離
 const config = process.env.NODE_ENV === 'production'
   ? productionConfig
   : developmentConfig;
 ```
 
-## Backup and Recovery
+## 備份與恢復
 
-### Online Backup
+### 線上備份
 
 ```typescript
-// Use SQLite online backup API
+// 使用 SQLite 線上備份 API
 import sqlite3 from '@sqlite/sqlite3';
 
 async function backupDatabase(sourcePath: string, backupPath: string): Promise<void> {
@@ -741,44 +741,44 @@ async function backupDatabase(sourcePath: string, backupPath: string): Promise<v
   });
 }
 
-// Periodic backup
+// 定期備份
 setInterval(async () => {
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     await backupDatabase('./app.db', `./backups/app-${timestamp}.db`);
-    console.log(`Backup completed: app-${timestamp}.db`);
+    console.log(`備份完成: app-${timestamp}.db`);
   } catch (error) {
-    console.error('Backup failed:', error);
+    console.error('備份失敗:', error);
   }
-}, 3600000); // Backup every hour
+}, 3600000); // 每小時備份
 ```
 
-### VACUUM and Optimization
+### VACUUM 與優化
 
 ```typescript
-// Regular maintenance
+// 定期維護
 async function maintainDatabase() {
   try {
-    // Analyze statistics
+    // 分析統計資訊
     await gateway.query('ANALYZE');
 
-    // Rebuild database (clean up space)
+    // 重建資料庫（清理空間）
     await gateway.query('VACUUM');
 
-    // Optimize query plans
+    // 優化查詢計劃
     await gateway.query('PRAGMA optimize');
 
-    console.log('Database maintenance completed');
+    console.log('資料庫維護完成');
   } catch (error) {
-    console.error('Database maintenance failed:', error);
+    console.error('資料庫維護失敗:', error);
   }
 }
 
-// Execute maintenance weekly
+// 每週執行維護
 setInterval(maintainDatabase, 7 * 24 * 60 * 60 * 1000);
 ```
 
-## Complete Example
+## 完整範例
 
 ```typescript
 import { DataGateway, SQLiteProviderOptions } from '@wfp99/data-gateway';
@@ -786,7 +786,7 @@ import fs from 'fs';
 import path from 'path';
 
 async function sqliteExample() {
-  // Ensure database directory exists
+  // 確保資料庫目錄存在
   const dbDir = './data';
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { mode: 0o750, recursive: true });
@@ -817,7 +817,7 @@ async function sqliteExample() {
   });
 
   try {
-    // Initialize database structure
+    // 初始化資料庫結構
     await gateway.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -844,14 +844,14 @@ async function sqliteExample() {
       )
     `);
 
-    // Create indexes
+    // 建立索引
     await gateway.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_department ON users(department);
       CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
     `);
 
-    // Set WAL mode and optimizations
+    // 設定 WAL 模式和優化
     await gateway.query('PRAGMA journal_mode = WAL');
     await gateway.query('PRAGMA synchronous = NORMAL');
     await gateway.query('PRAGMA cache_size = 10000');
@@ -860,7 +860,7 @@ async function sqliteExample() {
     const userRepo = gateway.getRepository('users');
     const postRepo = gateway.getRepository('posts');
 
-    // Insert test data
+    // 插入測試資料
     const userId = await userRepo?.insert({
       name: 'Alice Chen',
       email: 'alice@example.com',
@@ -874,9 +874,9 @@ async function sqliteExample() {
       created_at: new Date().toISOString()
     });
 
-    console.log(`New user ID: ${userId}`);
+    console.log(`新使用者 ID: ${userId}`);
 
-    // Complex query example
+    // 複雜查詢範例
     const engineeringUsers = await userRepo?.find({
       fields: ['id', 'name', 'email', 'salary'],
       where: {
@@ -890,18 +890,18 @@ async function sqliteExample() {
       limit: 10
     });
 
-    console.log('Engineering department users:', engineeringUsers?.rows);
+    console.log('工程部門使用者:', engineeringUsers?.rows);
 
-    // JSON query example
+    // JSON 查詢範例
     const darkThemeUsers = await gateway.query(`
       SELECT name, email, preferences
       FROM users
       WHERE JSON_EXTRACT(preferences, '$.theme') = 'dark'
     `);
 
-    console.log('Dark theme users:', darkThemeUsers);
+    console.log('深色主題使用者:', darkThemeUsers);
 
-    // Statistics query
+    // 統計查詢
     const stats = await userRepo?.find({
       fields: [
         'department',
@@ -913,20 +913,20 @@ async function sqliteExample() {
       orderBy: [{ field: 'avg_salary', direction: 'DESC' }]
     });
 
-    console.log('Department statistics:', stats?.rows);
+    console.log('部門統計:', stats?.rows);
 
-    // Monitor connection pool status
+    // 監控連線池狀態
     const poolStatus = gateway.getProviderPoolStatus('sqlite');
     if (poolStatus) {
-      console.log(`SQLite pool status: ${poolStatus.activeConnections}/${poolStatus.maxConnections}`);
+      console.log(`SQLite 連線池狀態: ${poolStatus.activeConnections}/${poolStatus.maxConnections}`);
     }
 
-    // Database maintenance
+    // 資料庫維護
     await gateway.query('PRAGMA optimize');
-    console.log('Database optimization completed');
+    console.log('資料庫優化完成');
 
   } catch (error) {
-    console.error('SQLite operation error:', error);
+    console.error('SQLite 操作錯誤:', error);
   } finally {
     await gateway.disconnectAll();
   }
@@ -935,20 +935,20 @@ async function sqliteExample() {
 sqliteExample().catch(console.error);
 ```
 
-## Best Practices
+## 最佳實踐
 
-1. **Use WAL Mode**: Improves concurrent read performance
-2. **Create Appropriate Indexes**: Build indexes based on query patterns
-3. **Enable Read Connection Pool**: Suitable for read-intensive applications
-4. **Regular Maintenance**: Execute VACUUM and ANALYZE
-5. **Monitor File Size**: Regular cleanup and compression
-6. **Backup Strategy**: Implement regular backups
-7. **Error Handling**: Properly handle file and permission errors
-8. **Security Settings**: Appropriate file permissions and access control
+1. **使用 WAL 模式**：提升並發讀取效能
+2. **建立適當索引**：根據查詢模式建立索引
+3. **啟用讀取連線池**：適合讀取密集型應用
+4. **定期維護**：執行 VACUUM 和 ANALYZE
+5. **監控檔案大小**：定期清理和壓縮
+6. **備份策略**：實施定期備份
+7. **錯誤處理**：妥善處理檔案和權限錯誤
+8. **安全設定**：適當的檔案權限和存取控制
 
-## Related Links
+## 相關連結
 
-- [SQLite Official Documentation](https://www.sqlite.org/docs.html)
-- [@sqlite/sqlite3 Package Documentation](https://github.com/sqlite/sqlite3)
-- [DataGateway API Documentation](../api/data-gateway.en.md)
-- [Connection Pool Management Guide](../advanced/connection-pooling.en.md)
+- [SQLite 官方文件](https://www.sqlite.org/docs.html)
+- [@sqlite/sqlite3 套件文件](https://github.com/sqlite/sqlite3)
+- [DataGateway API 文件](../api/data-gateway.zh-TW.md)
+- [連線池管理指南](../advanced/connection-pooling.zh-TW.md)

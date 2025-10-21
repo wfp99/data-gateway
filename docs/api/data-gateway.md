@@ -1,36 +1,36 @@
-# DataGateway API 參考
+# DataGateway API Reference
 
-`DataGateway` 是 Data Gateway 的核心類別，作為資料存取的中央協調器，整合多個資料提供者和儲存庫。
+`DataGateway` is the core class of Data Gateway, serving as the central coordinator for data access, integrating multiple data providers and repositories.
 
-## 類別定義
+## Class Definition
 
 ```typescript
 export class DataGateway {
   private providers: Map<string, DataProvider>;
   private repositories: Map<string, Repository<any>>;
 
-  // 私有建構子，使用 build() 靜態方法建立實例
+  // Private constructor, use build() static method to create instances
   private constructor();
 
-  // 靜態建構方法
+  // Static construction method
   static async build(config: DataGatewayConfig): Promise<DataGateway>;
 
-  // 取得儲存庫
+  // Get repository
   getRepository<T = any>(name: string): Repository<T> | undefined;
 
-  // 取得資料提供者
+  // Get data provider
   getProvider(name: string): DataProvider | undefined;
 
-  // 連線池狀態管理
+  // Connection pool status management
   getProviderPoolStatus(providerName: string): ConnectionPoolStatus | undefined;
   getAllPoolStatuses(): Map<string, ConnectionPoolStatus>;
 
-  // 連線管理
+  // Connection management
   async disconnectAll(): Promise<void>;
 }
 ```
 
-## 設定介面
+## Configuration Interfaces
 
 ### DataGatewayConfig
 
@@ -57,25 +57,32 @@ export interface DataGatewayConfig {
 }
 ```
 
-## 靜態方法
-
-### build()
-
-建立並初始化 DataGateway 實例。
+### RepositoryConfig
 
 ```typescript
-static async build(config: DataGatewayConfig): Promise<DataGateway>
+export interface RepositoryConfig {
+  provider: string;                    // Provider name reference
+  table: string;                      // Table/collection name
+  mapper?: EntityFieldMapper<any>;    // Field mapper (optional)
+  middlewares?: Middleware[];         // Middleware array (optional)
+}
 ```
 
-**參數:**
-- `config`: DataGatewayConfig - 完整的設定物件
+## Static Methods
 
-**回傳值:**
-- `Promise<DataGateway>` - 初始化完成的 DataGateway 實例
+### build(config: DataGatewayConfig): Promise\<DataGateway\>
 
-**範例:**
+Creates and initializes a DataGateway instance.
+
+**Parameters:**
+- `config`: Complete DataGateway configuration object
+
+**Returns:**
+- `Promise<DataGateway>`: Fully initialized DataGateway instance
+
+**Example:**
 ```typescript
-const config = {
+const gateway = await DataGateway.build({
   providers: {
     mysql: {
       type: 'mysql',
@@ -83,413 +90,639 @@ const config = {
         host: 'localhost',
         user: 'root',
         password: 'password',
-        database: 'testdb'
+        database: 'myapp'
+      }
+    },
+    sqlite: {
+      type: 'sqlite',
+      options: {
+        filename: './data.db'
       }
     }
   },
   repositories: {
-    users: { provider: 'mysql', table: 'users' }
+    users: {
+      provider: 'mysql',
+      table: 'users'
+    },
+    logs: {
+      provider: 'sqlite',
+      table: 'access_logs'
+    }
   }
-};
-
-const gateway = await DataGateway.build(config);
+});
 ```
 
-**錯誤處理:**
-- 如果任何 Provider 連線失敗，會拋出錯誤並清理已建立的連線
-- 錯誤格式: `[DataGateway] Build failed: {具體錯誤訊息}`
-
-## 實例方法
-
-### getRepository()
-
-透過名稱取得儲存庫實例。
-
+**Error Handling:**
 ```typescript
-getRepository<T = any>(name: string): Repository<T> | undefined
-```
-
-**參數:**
-- `name`: string - 儲存庫名稱（在設定中定義）
-
-**回傳值:**
-- `Repository<T> | undefined` - 儲存庫實例，如果找不到則回傳 undefined
-
-**範例:**
-```typescript
-const userRepo = gateway.getRepository('users');
-if (userRepo) {
-  const users = await userRepo.findMany();
-  console.log(users);
+try {
+  const gateway = await DataGateway.build(config);
+} catch (error) {
+  if (error.message.includes('Provider')) {
+    console.error('Provider configuration error:', error.message);
+  } else if (error.message.includes('connection')) {
+    console.error('Database connection error:', error.message);
+  } else {
+    console.error('Unknown initialization error:', error.message);
+  }
 }
+```
 
-// 使用泛型指定類型
+## Instance Methods
+
+### getRepository\<T\>(name: string): Repository\<T\> | undefined
+
+Gets a repository instance by name.
+
+**Parameters:**
+- `name`: Repository name (as defined in configuration)
+
+**Returns:**
+- `Repository<T> | undefined`: Repository instance or undefined if not found
+
+**Type Parameter:**
+- `T`: Entity type for type safety
+
+**Example:**
+```typescript
+// Basic usage
+const userRepo = gateway.getRepository('users');
+
+// With type safety
 interface User {
   id: number;
   name: string;
   email: string;
+  created_at: Date;
 }
 
-const typedUserRepo = gateway.getRepository<User>('users');
+const userRepo = gateway.getRepository<User>('users');
+
+// Handle undefined case
+const userRepo = gateway.getRepository('users');
+if (!userRepo) {
+  throw new Error('User repository not found');
+}
+
+const users = await userRepo.findMany();
 ```
 
-### getProvider()
+### getProvider(name: string): DataProvider | undefined
 
-透過名稱取得資料提供者實例。
+Gets a data provider instance by name.
 
+**Parameters:**
+- `name`: Provider name (as defined in configuration)
+
+**Returns:**
+- `DataProvider | undefined`: Provider instance or undefined if not found
+
+**Example:**
 ```typescript
-getProvider(name: string): DataProvider | undefined
-```
-
-**參數:**
-- `name`: string - 提供者名稱（在設定中定義）
-
-**回傳值:**
-- `DataProvider | undefined` - 資料提供者實例，如果找不到則回傳 undefined
-
-**範例:**
-```typescript
+// Get provider for direct operations
 const mysqlProvider = gateway.getProvider('mysql');
-if (mysqlProvider) {
-  console.log('MySQL 提供者可用');
 
-  // 檢查是否支援連線池
+if (mysqlProvider) {
+  // Check if provider supports connection pooling
   if (mysqlProvider.supportsConnectionPooling?.()) {
-    console.log('支援連線池');
+    const poolStatus = mysqlProvider.getPoolStatus?.();
+    console.log('Pool status:', poolStatus);
+  }
+
+  // Execute raw queries
+  if (mysqlProvider.query) {
+    const result = await mysqlProvider.query('SELECT VERSION()');
+    console.log('Database version:', result);
   }
 }
 ```
 
-### getProviderPoolStatus()
+### getProviderPoolStatus(providerName: string): ConnectionPoolStatus | undefined
 
-取得特定提供者的連線池狀態。
+Gets connection pool status for a specific provider.
 
-```typescript
-getProviderPoolStatus(providerName: string): ConnectionPoolStatus | undefined
-```
+**Parameters:**
+- `providerName`: Provider name
 
-**參數:**
-- `providerName`: string - 提供者名稱
+**Returns:**
+- `ConnectionPoolStatus | undefined`: Pool status or undefined if provider doesn't support pooling
 
-**回傳值:**
-- `ConnectionPoolStatus | undefined` - 連線池狀態，如果提供者不存在或不支援連線池則回傳 undefined
-
-**範例:**
+**Example:**
 ```typescript
 const poolStatus = gateway.getProviderPoolStatus('mysql');
+
 if (poolStatus) {
-  console.log(`總連線數: ${poolStatus.totalConnections}`);
-  console.log(`使用中: ${poolStatus.activeConnections}`);
-  console.log(`閒置: ${poolStatus.idleConnections}`);
-  console.log(`最大: ${poolStatus.maxConnections}`);
+  console.log('MySQL Pool Status:');
+  console.log(`  Total: ${poolStatus.totalConnections}`);
+  console.log(`  Active: ${poolStatus.activeConnections}`);
+  console.log(`  Idle: ${poolStatus.idleConnections}`);
+  console.log(`  Max: ${poolStatus.maxConnections}`);
+
+  // Calculate utilization
+  const utilization = poolStatus.activeConnections / poolStatus.maxConnections;
+  console.log(`  Utilization: ${Math.round(utilization * 100)}%`);
+
+  // Check for issues
+  if (utilization > 0.9) {
+    console.warn('⚠️ High pool utilization!');
+  }
+
+  if (poolStatus.activeConnections === poolStatus.maxConnections) {
+    console.error('🚨 Pool exhausted!');
+  }
+} else {
+  console.log('Provider does not support connection pooling');
 }
 ```
 
-### getAllPoolStatuses()
+### getAllPoolStatuses(): Map\<string, ConnectionPoolStatus\>
 
-取得所有支援連線池的提供者狀態。
+Gets connection pool status for all providers that support pooling.
 
-```typescript
-getAllPoolStatuses(): Map<string, ConnectionPoolStatus>
-```
+**Returns:**
+- `Map<string, ConnectionPoolStatus>`: Map of provider names to their pool statuses
 
-**回傳值:**
-- `Map<string, ConnectionPoolStatus>` - 包含提供者名稱和對應連線池狀態的 Map
-
-**範例:**
+**Example:**
 ```typescript
 const allStatuses = gateway.getAllPoolStatuses();
+
+// Log all pool statuses
 for (const [providerName, status] of allStatuses) {
-  console.log(`${providerName} 連線池:`);
-  console.log(`  使用中: ${status.activeConnections}/${status.maxConnections}`);
-  console.log(`  閒置: ${status.idleConnections}`);
+  const utilization = status.activeConnections / status.maxConnections;
+  console.log(`${providerName}: ${status.activeConnections}/${status.maxConnections} (${Math.round(utilization * 100)}%)`);
 }
+
+// Find providers with high utilization
+const highUtilizationProviders = Array.from(allStatuses.entries())
+  .filter(([_, status]) => status.activeConnections / status.maxConnections > 0.8)
+  .map(([name, _]) => name);
+
+if (highUtilizationProviders.length > 0) {
+  console.warn('High utilization providers:', highUtilizationProviders);
+}
+
+// Calculate total connections across all providers
+const totalStats = Array.from(allStatuses.values()).reduce(
+  (acc, status) => ({
+    total: acc.total + status.totalConnections,
+    active: acc.active + status.activeConnections,
+    max: acc.max + status.maxConnections
+  }),
+  { total: 0, active: 0, max: 0 }
+);
+
+console.log(`Total connections: ${totalStats.active}/${totalStats.max}`);
 ```
 
-### disconnectAll()
+### disconnectAll(): Promise\<void\>
 
-關閉所有已註冊的資料提供者連線。
+Disconnects all providers and cleans up resources.
 
+**Returns:**
+- `Promise<void>`: Promise that resolves when all disconnections are complete
+
+**Example:**
 ```typescript
-async disconnectAll(): Promise<void>
-```
+// Basic usage
+await gateway.disconnectAll();
 
-**回傳值:**
-- `Promise<void>` - 所有連線關閉完成後解析
-
-**範例:**
-```typescript
-// 應用程式關閉時的優雅清理
-process.on('SIGTERM', async () => {
-  console.log('正在關閉應用程式...');
-  await gateway.disconnectAll();
-  console.log('所有資料庫連線已關閉');
-  process.exit(0);
-});
-
-// 或在 try-finally 區塊中使用
+// With error handling
 try {
-  // 執行資料庫操作
-  const result = await userRepo.findMany();
-} finally {
   await gateway.disconnectAll();
+  console.log('All providers disconnected successfully');
+} catch (error) {
+  console.error('Error during disconnection:', error);
 }
+
+// Graceful shutdown pattern
+process.on('SIGINT', async () => {
+  console.log('Shutting down gracefully...');
+
+  try {
+    // Stop accepting new requests
+    server.close();
+
+    // Wait for pending operations
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Disconnect all providers
+    await gateway.disconnectAll();
+
+    console.log('Shutdown complete');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+});
 ```
 
-## 支援的提供者類型
-
-### 內建提供者
-
-```typescript
-// MySQL 提供者
-{
-  type: 'mysql',
-  options: MySQLProviderOptions
-}
-
-// PostgreSQL 提供者
-{
-  type: 'postgresql',
-  options: PostgreSQLProviderOptions
-}
-
-// SQLite 提供者
-{
-  type: 'sqlite',
-  options: SQLiteProviderOptions
-}
-
-// Remote API 提供者
-{
-  type: 'remote',
-  options: RemoteProviderOptions
-}
-
-// 自訂提供者
-{
-  type: 'custom',
-  options: { provider: DataProvider }
-}
-```
-
-## 連線池狀態介面
+## Supporting Interfaces
 
 ### ConnectionPoolStatus
 
 ```typescript
 export interface ConnectionPoolStatus {
-  /** 連線池中的總連線數 */
-  totalConnections: number;
-  /** 閒置連線數 */
-  idleConnections: number;
-  /** 使用中連線數 */
-  activeConnections: number;
-  /** 最大允許連線數 */
-  maxConnections: number;
-  /** 維持的最小閒置連線數（可選） */
-  minConnections?: number;
+  totalConnections: number;    // Current total connections in pool
+  activeConnections: number;   // Currently active (in-use) connections
+  idleConnections: number;     // Currently idle connections
+  maxConnections: number;      // Maximum allowed connections
 }
 ```
 
-## 錯誤處理
+### Provider Types
 
-### 建構階段錯誤
+```typescript
+// Built-in provider types
+export type BuiltInProviderType = 'mysql' | 'sqlite' | 'postgresql' | 'remote';
+
+// All provider types (extensible)
+export type ProviderType = BuiltInProviderType | string;
+```
+
+## Usage Patterns
+
+### Multi-Provider Setup
+
+```typescript
+const gateway = await DataGateway.build({
+  providers: {
+    // Primary database
+    mainDB: {
+      type: 'mysql',
+      options: {
+        host: 'main-db.example.com',
+        database: 'app_main',
+        pool: { connectionLimit: 20 }
+      }
+    },
+
+    // Analytics database
+    analyticsDB: {
+      type: 'postgresql',
+      options: {
+        host: 'analytics-db.example.com',
+        database: 'analytics',
+        pool: { max: 10 }
+      }
+    },
+
+    // Cache database
+    cache: {
+      type: 'sqlite',
+      options: {
+        filename: './cache.db',
+        pool: { usePool: true, readPoolSize: 5 }
+      }
+    },
+
+    // External API
+    api: {
+      type: 'remote',
+      options: {
+        endpoint: 'https://api.example.com/data',
+        bearerToken: process.env.API_TOKEN
+      }
+    }
+  },
+
+  repositories: {
+    // Main data
+    users: { provider: 'mainDB', table: 'users' },
+    orders: { provider: 'mainDB', table: 'orders' },
+
+    // Analytics data
+    userStats: { provider: 'analyticsDB', table: 'user_statistics' },
+
+    // Cache data
+    sessions: { provider: 'cache', table: 'user_sessions' },
+
+    // External data
+    externalData: { provider: 'api', table: 'external_entities' }
+  }
+});
+
+// Use different repositories
+const userRepo = gateway.getRepository('users');        // MySQL
+const statsRepo = gateway.getRepository('userStats');   // PostgreSQL
+const sessionRepo = gateway.getRepository('sessions');  // SQLite
+const apiRepo = gateway.getRepository('externalData');  // Remote API
+```
+
+### Connection Pool Monitoring
+
+```typescript
+class PoolMonitor {
+  constructor(private gateway: DataGateway) {}
+
+  startMonitoring(intervalMs: number = 30000) {
+    setInterval(() => {
+      this.logPoolStatuses();
+      this.checkPoolHealth();
+    }, intervalMs);
+  }
+
+  private logPoolStatuses() {
+    const allStatuses = this.gateway.getAllPoolStatuses();
+
+    if (allStatuses.size === 0) {
+      console.log('No connection pools active');
+      return;
+    }
+
+    console.log('\n=== Connection Pool Status ===');
+    for (const [providerName, status] of allStatuses) {
+      const utilization = (status.activeConnections / status.maxConnections * 100).toFixed(1);
+      console.log(`${providerName}:`);
+      console.log(`  Connections: ${status.activeConnections}/${status.totalConnections}/${status.maxConnections} (active/total/max)`);
+      console.log(`  Utilization: ${utilization}%`);
+      console.log(`  Idle: ${status.idleConnections}`);
+    }
+    console.log('==============================\n');
+  }
+
+  private checkPoolHealth() {
+    const allStatuses = this.gateway.getAllPoolStatuses();
+
+    for (const [providerName, status] of allStatuses) {
+      const utilization = status.activeConnections / status.maxConnections;
+
+      if (utilization >= 1.0) {
+        console.error(`🚨 CRITICAL: ${providerName} pool exhausted!`);
+      } else if (utilization > 0.9) {
+        console.warn(`⚠️  WARNING: ${providerName} pool utilization high (${Math.round(utilization * 100)}%)`);
+      } else if (utilization > 0.8) {
+        console.info(`ℹ️  INFO: ${providerName} pool utilization elevated (${Math.round(utilization * 100)}%)`);
+      }
+    }
+  }
+
+  getHealthSummary() {
+    const allStatuses = this.gateway.getAllPoolStatuses();
+    const summary = {
+      healthy: 0,
+      warning: 0,
+      critical: 0,
+      providers: {} as Record<string, { status: string; utilization: number }>
+    };
+
+    for (const [providerName, status] of allStatuses) {
+      const utilization = status.activeConnections / status.maxConnections;
+      let healthStatus: string;
+
+      if (utilization >= 1.0) {
+        healthStatus = 'critical';
+        summary.critical++;
+      } else if (utilization > 0.8) {
+        healthStatus = 'warning';
+        summary.warning++;
+      } else {
+        healthStatus = 'healthy';
+        summary.healthy++;
+      }
+
+      summary.providers[providerName] = {
+        status: healthStatus,
+        utilization: Math.round(utilization * 100)
+      };
+    }
+
+    return summary;
+  }
+}
+
+// Usage
+const monitor = new PoolMonitor(gateway);
+monitor.startMonitoring(30000); // Monitor every 30 seconds
+
+// Health check endpoint
+app.get('/health/pools', (req, res) => {
+  const health = monitor.getHealthSummary();
+  const status = health.critical > 0 ? 500 : health.warning > 0 ? 200 : 200;
+
+  res.status(status).json({
+    status: health.critical > 0 ? 'critical' : health.warning > 0 ? 'warning' : 'healthy',
+    summary: health
+  });
+});
+```
+
+### Resource Cleanup
+
+```typescript
+class GatewayManager {
+  private gateway?: DataGateway;
+
+  async initialize(config: DataGatewayConfig) {
+    try {
+      this.gateway = await DataGateway.build(config);
+      console.log('DataGateway initialized successfully');
+
+      // Set up graceful shutdown
+      this.setupShutdownHandlers();
+
+      return this.gateway;
+    } catch (error) {
+      console.error('Failed to initialize DataGateway:', error);
+      throw error;
+    }
+  }
+
+  async shutdown() {
+    if (this.gateway) {
+      try {
+        console.log('Shutting down DataGateway...');
+        await this.gateway.disconnectAll();
+        console.log('DataGateway shutdown complete');
+      } catch (error) {
+        console.error('Error during DataGateway shutdown:', error);
+        throw error;
+      } finally {
+        this.gateway = undefined;
+      }
+    }
+  }
+
+  getGateway(): DataGateway {
+    if (!this.gateway) {
+      throw new Error('DataGateway not initialized');
+    }
+    return this.gateway;
+  }
+
+  private setupShutdownHandlers() {
+    // Handle graceful shutdown signals
+    const signals = ['SIGINT', 'SIGTERM'] as const;
+
+    signals.forEach(signal => {
+      process.on(signal, async () => {
+        console.log(`Received ${signal}, initiating graceful shutdown...`);
+
+        try {
+          await this.shutdown();
+          process.exit(0);
+        } catch (error) {
+          console.error('Error during graceful shutdown:', error);
+          process.exit(1);
+        }
+      });
+    });
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', async (error) => {
+      console.error('Uncaught exception:', error);
+
+      try {
+        await this.shutdown();
+      } catch (shutdownError) {
+        console.error('Error during emergency shutdown:', shutdownError);
+      }
+
+      process.exit(1);
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', async (reason) => {
+      console.error('Unhandled promise rejection:', reason);
+
+      try {
+        await this.shutdown();
+      } catch (shutdownError) {
+        console.error('Error during emergency shutdown:', shutdownError);
+      }
+
+      process.exit(1);
+    });
+  }
+}
+
+// Usage
+const gatewayManager = new GatewayManager();
+
+async function startApplication() {
+  try {
+    const gateway = await gatewayManager.initialize(config);
+
+    // Application logic using gateway
+    const userRepo = gateway.getRepository('users');
+    // ... rest of application
+
+  } catch (error) {
+    console.error('Failed to start application:', error);
+    process.exit(1);
+  }
+}
+
+startApplication();
+```
+
+## Error Handling
+
+Common error scenarios and how to handle them:
 
 ```typescript
 try {
   const gateway = await DataGateway.build(config);
 } catch (error) {
-  if (error.message.includes('Build failed')) {
-    console.error('DataGateway 建構失敗:', error.message);
-
-    // 常見錯誤類型
-    if (error.message.includes('Provider')) {
-      console.error('提供者設定錯誤');
-    } else if (error.message.includes('connection')) {
-      console.error('資料庫連線失敗');
-    } else if (error.message.includes('Unknown provider type')) {
-      console.error('未知的提供者類型');
-    }
-  }
-}
-```
-
-### 常見錯誤訊息
-
-1. **Unknown provider type**: 設定中指定了不支援的提供者類型
-2. **Provider 'name' not found for repository 'repo'**: 儲存庫引用了不存在的提供者
-3. **MySQL provider requires 'mysql2' package**: 缺少必要的資料庫驅動程式
-4. **Connection failed for provider 'name'**: 特定提供者連線失敗
-
-## 完整使用範例
-
-```typescript
-import {
-  DataGateway,
-  DataGatewayConfig,
-  MySQLProviderOptions,
-  SQLiteProviderOptions,
-  RemoteProviderOptions
-} from '@wfp99/data-gateway';
-
-async function completeExample() {
-  const config: DataGatewayConfig = {
-    providers: {
-      // MySQL 提供者含連線池
-      mysql: {
-        type: 'mysql',
-        options: {
-          host: 'localhost',
-          user: 'root',
-          password: 'password',
-          database: 'app_db',
-          pool: {
-            usePool: true,
-            connectionLimit: 10,
-            acquireTimeout: 60000,
-            timeout: 600000
-          }
-        } as MySQLProviderOptions
-      },
-
-      // SQLite 提供者
-      sqlite: {
-        type: 'sqlite',
-        options: {
-          filename: './app.db',
-          pool: {
-            usePool: true,
-            maxReadConnections: 3,
-            enableWAL: true
-          }
-        } as SQLiteProviderOptions
-      },
-
-      // 遠端 API 提供者
-      api: {
-        type: 'remote',
-        options: {
-          endpoint: 'https://api.example.com/data',
-          bearerToken: process.env.API_TOKEN
-        } as RemoteProviderOptions
-      }
-    },
-
-    repositories: {
-      users: { provider: 'mysql', table: 'users' },
-      sessions: { provider: 'sqlite', table: 'sessions' },
-      products: { provider: 'api', table: 'products' }
-    }
-  };
-
-  try {
-    // 建立 Gateway
-    const gateway = await DataGateway.build(config);
-    console.log('✅ DataGateway 建立成功');
-
-    // 使用儲存庫
-    const userRepo = gateway.getRepository('users');
-    const users = await userRepo?.findMany();
-    console.log(`找到 ${users?.length} 位使用者`);
-
-    // 監控連線池
-    const mysqlStatus = gateway.getProviderPoolStatus('mysql');
-    if (mysqlStatus) {
-      console.log(`MySQL 連線池: ${mysqlStatus.activeConnections}/${mysqlStatus.maxConnections}`);
-    }
-
-    // 取得所有連線池狀態
-    const allStatuses = gateway.getAllPoolStatuses();
-    console.log(`監控 ${allStatuses.size} 個連線池`);
-
-    // 清理資源
-    await gateway.disconnectAll();
-    console.log('✅ 所有連線已關閉');
-
-  } catch (error) {
-    console.error('❌ 執行失敗:', error);
+  if (error.message.includes('Unknown provider type')) {
+    console.error('Invalid provider type in configuration');
+  } else if (error.message.includes('Failed to connect')) {
+    console.error('Database connection failed - check connection parameters');
+  } else if (error.message.includes('Provider')) {
+    console.error('Provider initialization error:', error.message);
+  } else {
+    console.error('Unexpected error during DataGateway initialization:', error);
   }
 }
 
-completeExample();
+// Repository access errors
+const userRepo = gateway.getRepository('nonexistent');
+if (!userRepo) {
+  throw new Error('Repository "nonexistent" not found in configuration');
+}
+
+// Provider access errors
+const provider = gateway.getProvider('nonexistent');
+if (!provider) {
+  console.warn('Provider "nonexistent" not found');
+}
 ```
 
-## 相關文件
+## Related Links
 
-- [Repository API](./repository.md) - 儲存庫操作詳細說明
-- [DataProvider API](./data-provider.md) - 資料提供者介面
-- [Query Object API](#query-object-api) - 查詢物件詳細說明
-- [連線池管理](../advanced/connection-pooling.md) - 連線池詳細設定
-- [錯誤處理](../advanced/error-handling.md) - 錯誤處理最佳實務
+- [Repository API](./repository.md)
+- [DataProvider API](./data-provider.md)
+- [Query Object API](#query-object-api)
+- [Connection Pooling Guide](../advanced/connection-pooling.md)
 
 ---
 
 ## Query Object API
 
-### Query 介面
+### Query Interface
 
-`Query` 物件描述一個 SQL 查詢操作（SELECT/INSERT/UPDATE/DELETE），支援欄位選擇、條件、JOIN、GROUP BY、ORDER BY、分頁等功能。
+The `Query` object describes a SQL query operation (SELECT/INSERT/UPDATE/DELETE), supporting field selection, conditions, JOIN, GROUP BY, ORDER BY, pagination, and more.
 
 ```typescript
 export interface Query {
-  /** 查詢類型：SELECT/INSERT/UPDATE/DELETE */
+  /** Query type: SELECT/INSERT/UPDATE/DELETE */
   type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE';
 
-  /** 目標資料表名稱 */
+  /** Target table name */
   table: string;
 
-  /** 要查詢或操作的欄位（可包含聚合函數） */
+  /** Fields to query or operate (can include aggregates) */
   fields?: (string | Aggregate)[];
 
-  /** 要插入或更新的資料（用於 INSERT/UPDATE） */
+  /** Data to insert or update (for INSERT/UPDATE) */
   values?: Record<string, any>;
 
-  /** 查詢條件 */
+  /** Query condition */
   where?: Condition;
 
-  /** JOIN 設定 */
+  /** JOIN settings */
   joins?: Join[];
 
-  /** GROUP BY 欄位 */
+  /** GROUP BY fields */
   groupBy?: string[];
 
-  /** ORDER BY 設定 */
+  /** ORDER BY settings */
   orderBy?: { field: string; direction: 'ASC' | 'DESC' }[];
 
-  /** 限制回傳列數 */
+  /** Limit number of rows */
   limit?: number;
 
-  /** 分頁偏移量 */
+  /** Pagination offset */
   offset?: number;
 }
 ```
 
-### Join 介面
+### Join Interface
 
-描述 JOIN 操作，定義 JOIN 類型、目標資料表或 repository，以及連接條件。
+Describes a JOIN operation, defining JOIN type, target table or repository, and join condition.
 
 ```typescript
 export interface Join {
-  /** JOIN 類型 */
+  /** JOIN type */
   type: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
 
-  /** JOIN 來源（可使用 repository 名稱或資料表名稱） */
+  /** JOIN source (can use repository name or table name) */
   source: JoinSource;
 
-  /** JOIN 條件 */
+  /** JOIN condition */
   on: Condition;
 }
 
 export type JoinSource =
-  | { repository: string }   // 引用 repository 名稱（推薦）
-  | { table: string };        // 直接引用資料表名稱
+  | { repository: string }   // Reference repository by name (recommended)
+  | { table: string };        // Reference table by name directly
 ```
 
-#### JoinSource 說明
+#### JoinSource Description
 
-`JoinSource` 支援兩種方式指定 JOIN 的目標：
+`JoinSource` supports two ways to specify the JOIN target:
 
-**1. 使用 repository 名稱（推薦）**
+**1. Using repository name (Recommended)**
 
 ```typescript
 {
@@ -499,12 +732,12 @@ export type JoinSource =
 }
 ```
 
-優點：
-- 自動使用該 repository 的 EntityFieldMapper
-- 程式碼更易維護
-- 保持一致性
+Advantages:
+- Automatically uses the repository's EntityFieldMapper
+- More maintainable code
+- Maintains consistency
 
-**2. 直接使用資料表名稱**
+**2. Using table name directly**
 
 ```typescript
 {
@@ -514,95 +747,95 @@ export type JoinSource =
 }
 ```
 
-使用時機：
-- 資料表未定義為 repository
-- 臨時表或視圖
-- 不需要欄位對應的情況
+When to use:
+- Table is not defined as a repository
+- Temporary tables or views
+- When field mapping is not needed
 
-#### JOIN 類型支援
+#### JOIN Type Support
 
-不同資料庫對 JOIN 類型的支援有差異：
+Different databases have varying support for JOIN types:
 
-| JOIN 類型 | MySQL | PostgreSQL | SQLite | 說明 |
-|-----------|-------|------------|--------|------|
-| INNER     | ✅    | ✅         | ✅     | 內部連接 |
-| LEFT      | ✅    | ✅         | ✅     | 左外連接 |
-| RIGHT     | ✅    | ✅         | ✅     | 右外連接 |
-| FULL      | ❌    | ✅         | ❌     | 完全外連接 |
+| JOIN Type | MySQL | PostgreSQL | SQLite | Description |
+|-----------|-------|------------|--------|-------------|
+| INNER     | ✅    | ✅         | ✅     | Inner join |
+| LEFT      | ✅    | ✅         | ✅     | Left outer join |
+| RIGHT     | ✅    | ✅         | ✅     | Right outer join |
+| FULL      | ❌    | ✅         | ❌     | Full outer join |
 
-**重要提示：** 使用 `FULL` 類型前請確認您的資料庫支援。
+**Important Note:** Please verify your database supports the JOIN type before using `FULL`.
 
-### Condition 類型
+### Condition Type
 
-描述 SQL WHERE 條件，支援基本運算子、AND/OR/NOT、IN、LIKE 等。
+Describes SQL WHERE conditions, supporting basic operators, AND/OR/NOT, IN, LIKE, etc.
 
 ```typescript
 export type Condition =
-  // 基本比較運算
+  // Basic comparison operations
   | { field: string; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
 
-  // IN/NOT IN（使用子查詢）
+  // IN/NOT IN (with subquery)
   | { field: string; op: 'IN' | 'NOT IN'; subquery: Query }
 
-  // IN/NOT IN（使用值陣列）
+  // IN/NOT IN (with value array)
   | { field: string; op: 'IN' | 'NOT IN'; values: any[] }
 
-  // AND 條件
+  // AND condition
   | { and: Condition[] }
 
-  // OR 條件
+  // OR condition
   | { or: Condition[] }
 
-  // NOT 條件
+  // NOT condition
   | { not: Condition }
 
-  // LIKE 模糊查詢
+  // LIKE pattern matching
   | { like: { field: string; pattern: string } };
 ```
 
-### Aggregate 介面
+### Aggregate Interface
 
-描述聚合函數，指定聚合類型、目標欄位和別名。
+Describes aggregate functions, specifying aggregation type, target field, and alias.
 
 ```typescript
 export interface Aggregate {
-  /** 聚合類型 */
+  /** Aggregation type */
   type: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
 
-  /** 目標欄位 */
+  /** Target field */
   field: string;
 
-  /** 結果別名（可選） */
+  /** Result alias (optional) */
   alias?: string;
 }
 ```
 
-### QueryResult 介面
+### QueryResult Interface
 
-描述查詢結果，適用於各種 CRUD 操作和不同類型的資料庫。
+Describes query results, suitable for various CRUD operations and different types of databases.
 
 ```typescript
 export interface QueryResult<T = any> {
-  /** SELECT 查詢結果資料列 */
+  /** SELECT query result rows */
   rows?: T[];
 
-  /** INSERT、UPDATE 或 DELETE 操作影響的資料列數 */
+  /** Number of rows affected by INSERT, UPDATE, or DELETE operations */
   affectedRows?: number;
 
-  /** 新插入資料的主鍵值（某些資料庫支援） */
+  /** Primary key value of newly inserted data (optional, supported by some databases) */
   insertId?: number | string;
 
-  /** 查詢失敗時的錯誤訊息 */
+  /** Error message when query fails */
   error?: string;
 }
 ```
 
-### JOIN 使用範例
+### JOIN Usage Examples
 
-#### 基本 JOIN 查詢
+#### Basic JOIN Query
 
 ```typescript
-// 使用 repository 名稱（推薦）
+// Using repository name (recommended)
 const query: Query = {
   type: 'SELECT',
   table: 'orders',
@@ -620,7 +853,7 @@ const query: Query = {
 const result = await orderRepo.query(query);
 ```
 
-#### 多個 JOIN
+#### Multiple JOINs
 
 ```typescript
 const query: Query = {
@@ -647,7 +880,7 @@ const query: Query = {
 };
 ```
 
-#### 使用資料表名稱的 JOIN
+#### JOIN Using Table Name
 
 ```typescript
 const query: Query = {
@@ -664,29 +897,8 @@ const query: Query = {
 };
 ```
 
-### 從舊版遷移
+**Note**: It's recommended to use `source: { repository: 'repo_name' }` when the table is already defined as a repository, as this allows automatic field mapping.
 
-舊版 JOIN 語法直接使用 `table` 屬性，新版使用 `source` 物件：
+---
 
-```typescript
-// ❌ 舊版語法（已棄用）
-joins: [{
-  type: 'INNER',
-  table: 'users',
-  on: { ... }
-}]
-
-// ✅ 新版語法
-joins: [{
-  type: 'INNER',
-  source: { table: 'users' },
-  on: { ... }
-}]
-
-// ✅ 推薦使用 repository
-joins: [{
-  type: 'INNER',
-  source: { repository: 'users' },
-  on: { ... }
-}]
-```
+## EntityFieldMapper

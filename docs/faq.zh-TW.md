@@ -1,14 +1,14 @@
-# Frequently Asked Questions (FAQ)
+# 常見問題 FAQ
 
-[中文版](./faq.zh-TW.md) | English
+[English](./faq.md) | 中文版
 
-Common questions and solutions for Data Gateway.
+Data Gateway 常見問題與解決方案。
 
-## Installation & Setup
+## 安裝與設定
 
-### Q: Why "database driver not found" after installation?
+### Q: 為什麼安裝後報錯找不到資料庫驅動程式？
 
-**A:** Install the required database driver:
+**A:** 請手動安裝對應的資料庫驅動程式：
 
 ```bash
 npm install mysql2              # MySQL
@@ -16,15 +16,15 @@ npm install pg @types/pg        # PostgreSQL
 npm install sqlite sqlite3      # SQLite
 ```
 
-Remote API Provider requires no additional drivers.
+Remote API Provider 不需要安裝額外驅動程式。
 
-### Q: Node.js version requirements?
+### Q: Node.js 版本要求是什麼？
 
-**A:** Requires Node.js 18.0.0 or higher. Check with `node --version`.
+**A:** 要求 Node.js 18.0.0 或更高版本。使用 `node --version` 檢查版本。
 
-### Q: TypeScript support?
+### Q: 如何在 TypeScript 專案中使用？
 
-**A:** Built-in TypeScript support with generics:
+**A:** 內建 TypeScript 支援，可使用泛型：
 
 ```typescript
 import { DataGateway } from '@wfp99/data-gateway';
@@ -38,11 +38,11 @@ interface User {
 const userRepo = gateway.getRepository<User>('users');
 ```
 
-## Connections & Providers
+## 連線與 Provider
 
-### Q: Multiple database connections?
+### Q: 如何設定多個資料庫連線？
 
-**A:** Configure multiple providers:
+**A:** 配置多個 Provider：
 
 ```typescript
 const config = {
@@ -63,9 +63,9 @@ const config = {
 };
 ```
 
-### Q: Connection pooling support?
+### Q: 是否支援連線池？
 
-**A:** Yes, with provider-specific strategies:
+**A:** 支援，各 Provider 有不同策略：
 
 ```typescript
 mysql: {
@@ -80,16 +80,16 @@ mysql: {
 }
 ```
 
-Monitor pool status:
+監控連線池狀態：
 
 ```typescript
 const status = gateway.getProviderPoolStatus('mysql');
-console.log(`Active: ${status?.activeConnections}/${status?.maxConnections}`);
+console.log(`使用中: ${status?.activeConnections}/${status?.maxConnections}`);
 ```
 
-### Q: SSL connections?
+### Q: 如何設定 SSL 連線？
 
-**A:** Configure SSL options:
+**A:** 配置 SSL 選項：
 
 ```typescript
 mysql: {
@@ -104,9 +104,9 @@ mysql: {
 }
 ```
 
-### Q: Handle connection failures?
+### Q: 如何處理連線失敗？
 
-**A:** Implement retry mechanism:
+**A:** 實作重試機制：
 
 ```typescript
 async function withRetry<T>(operation: () => Promise<T>, retries = 3): Promise<T> {
@@ -122,32 +122,32 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3): Promise<T
 }
 ```
 
-## Queries & Operations
+## 查詢與資料操作
 
-### Q: Supported query operators?
+### Q: 支援哪些查詢運算子？
 
-**A:** Comprehensive operator support:
+**A:** 完整的運算子支援：
 
 ```typescript
-// Comparison
+// 比較運算
 { field: 'age', op: '>', value: 18 }
 
-// String matching
+// 字串比對
 { field: 'name', op: 'LIKE', value: 'John%' }
 
-// Array operations
+// 陣列運算
 { field: 'status', op: 'IN', values: ['active', 'pending'] }
 
-// Range
+// 範圍運算
 { field: 'age', op: 'BETWEEN', values: [18, 65] }
 
-// Null checks
+// Null 檢查
 { field: 'deleted_at', op: 'IS NULL' }
 ```
 
-### Q: Complex AND/OR conditions?
+### Q: 如何執行複雜的 AND/OR 條件查詢？
 
-**A:** Use nested conditions:
+**A:** 使用巢狀條件：
 
 ```typescript
 const result = await userRepo.find({
@@ -165,9 +165,9 @@ const result = await userRepo.find({
 });
 ```
 
-### Q: Pagination?
+### Q: 如何實現分頁？
 
-**A:** Use `limit` and `offset`:
+**A:** 使用 `limit` 和 `offset`：
 
 ```typescript
 const page = await userRepo.find({
@@ -179,9 +179,9 @@ const page = await userRepo.find({
 const totalPages = Math.ceil((page.totalCount || 0) / 20);
 ```
 
-### Q: Aggregate queries?
+### Q: 如何執行聚合查詢？
 
-**A:** Use aggregate fields:
+**A:** 使用聚合欄位：
 
 ```typescript
 const stats = await userRepo.find({
@@ -199,11 +199,11 @@ const stats = await userRepo.find({
 });
 ```
 
-## Field Mapping
+## 欄位對映
 
-### Q: Map application fields to database fields?
+### Q: 如何對映應用程式欄位名稱到資料庫欄位名稱？
 
-**A:** Use `MappingFieldMapper`:
+**A:** 使用 `MappingFieldMapper`：
 
 ```typescript
 import { MappingFieldMapper } from '@wfp99/data-gateway';
@@ -225,114 +225,114 @@ const config = {
 };
 ```
 
-### Q: Custom field transformations?
+### Q: 如何自訂欄位轉換？
 
-**A:** Extend `MappingFieldMapper`:
+**A:** 擴展 `MappingFieldMapper`：
 
 ```typescript
 class CustomUserMapper extends MappingFieldMapper {
   transformToDatabase(data: Partial<User>): Record<string, any> {
     const mapped = super.transformToDatabase(data);
-
+    
     if ('isActive' in data) {
       mapped.status = data.isActive ? 'active' : 'inactive';
       delete mapped.isActive;
     }
-
+    
     return mapped;
   }
 }
 ```
 
-## Middleware
+## 中介軟體
 
-### Q: Request logging?
+### Q: 如何實作請求記錄？
 
-**A:** Create logging middleware:
+**A:** 建立記錄中介軟體：
 
 ```typescript
 const loggingMiddleware: Middleware = async (query, next) => {
   const startTime = Date.now();
-  console.log(`${query.type} ${query.table} started`);
-
+  console.log(`${query.type} ${query.table} 開始`);
+  
   try {
     const result = await next(query);
-    console.log(`Completed in ${Date.now() - startTime}ms`);
+    console.log(`完成，耗時 ${Date.now() - startTime}ms`);
     return result;
   } catch (error) {
-    console.error(`Failed after ${Date.now() - startTime}ms:`, error.message);
+    console.error(`失敗，耗時 ${Date.now() - startTime}ms:`, error.message);
     throw error;
   }
 };
 ```
 
-### Q: Data validation?
+### Q: 如何實作資料驗證？
 
-**A:** Create validation middleware:
+**A:** 建立驗證中介軟體：
 
 ```typescript
 const validationMiddleware: Middleware = async (query, next) => {
   if (query.type === 'INSERT' && query.data) {
     if (!query.data.email?.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      throw new Error('Invalid email format');
+      throw new Error('電子郵件格式錯誤');
     }
   }
   return next(query);
 };
 ```
 
-### Q: Caching?
+### Q: 如何實作快取？
 
-**A:** Implement cache middleware:
+**A:** 實作快取中介軟體：
 
 ```typescript
 const cacheMiddleware: Middleware = (() => {
   const cache = new Map();
   const TTL = 5 * 60 * 1000;
-
+  
   return async (query, next) => {
     if (query.type !== 'SELECT') return next(query);
-
+    
     const key = JSON.stringify(query);
     const cached = cache.get(key);
-
+    
     if (cached && Date.now() - cached.timestamp < TTL) {
       return cached.data;
     }
-
+    
     const result = await next(query);
     cache.set(key, { data: result, timestamp: Date.now() });
-
+    
     return result;
   };
 })();
 ```
 
-## Performance & Optimization
+## 效能優化
 
-### Q: Query optimization tips?
+### Q: 查詢優化技巧？
 
-**A:** Follow best practices:
+**A:** 遵循最佳實踐：
 
 ```typescript
-// 1. Use indexed fields
+// 1. 使用索引欄位
 const user = await userRepo.findOne({
-  field: 'email', // indexed
+  field: 'email', // 已建立索引
   op: '=',
   value: 'user@example.com'
 });
 
-// 2. Limit result sets
+// 2. 限制結果數量
 const users = await userRepo.find({
   limit: 100
 });
 
-// 3. Select only needed fields
+// 3. 只查詢需要的欄位
 const users = await userRepo.find({
   fields: ['id', 'name', 'email']
 });
 
-// 4. Batch operations
+// 4. 批次操作
 const users = await userRepo.findMany({
   field: 'id',
   op: 'IN',
@@ -340,51 +340,51 @@ const users = await userRepo.findMany({
 });
 ```
 
-### Q: Connection pool tuning?
+### Q: 如何調整連線池設定？
 
-**A:** Adjust based on environment:
+**A:** 根據環境調整：
 
 ```typescript
-// Development
+// 開發環境
 pool: { connectionLimit: 3 }
 
-// Production (high traffic)
-pool: {
+// 生產環境（高流量）
+pool: { 
   connectionLimit: 20,
   queueLimit: 100,
   preConnect: true
 }
 
-// Batch processing
-pool: {
+// 批次處理
+pool: { 
   connectionLimit: 5,
   acquireTimeout: 120000
 }
 ```
 
-### Q: Monitor performance?
+### Q: 如何監控效能？
 
-**A:** Use performance middleware:
+**A:** 使用效能中介軟體：
 
 ```typescript
 const performanceMiddleware: Middleware = async (query, next) => {
   const start = Date.now();
   const result = await next(query);
   const duration = Date.now() - start;
-
+  
   if (duration > 1000) {
-    console.warn(`Slow query: ${query.type} ${query.table} (${duration}ms)`);
+    console.warn(`慢查詢: ${query.type} ${query.table} (${duration}ms)`);
   }
-
+  
   return result;
 };
 ```
 
-## Error Handling
+## 錯誤處理
 
-### Q: Handle connection timeouts?
+### Q: 如何處理連線逾時？
 
-**A:** Implement timeout handling:
+**A:** 實作逾時處理：
 
 ```typescript
 async function executeWithTimeout<T>(
@@ -400,61 +400,61 @@ async function executeWithTimeout<T>(
 }
 ```
 
-### Q: Database-specific errors?
+### Q: 如何處理資料庫特定錯誤？
 
-**A:** Handle provider-specific errors:
+**A:** 處理 Provider 特定錯誤：
 
 ```typescript
 try {
   await userRepo.create(data);
 } catch (error) {
   if (error.code === 'ER_DUP_ENTRY') {
-    throw new Error('Duplicate entry');
+    throw new Error('資料重複');
   } else if (error.code === '23505') {
-    throw new Error('Unique constraint violation');
+    throw new Error('唯一性約束違反');
   }
   throw error;
 }
 ```
 
-## Security
+## 安全性
 
-### Q: SQL injection prevention?
+### Q: 如何防止 SQL 注入攻擊？
 
-**A:** Data Gateway automatically uses parameterized queries:
+**A:** Data Gateway 自動使用參數化查詢：
 
 ```typescript
-// Automatically parameterized and safe
+// 自動參數化且安全
 const users = await userRepo.findMany({
   field: 'email',
   op: '=',
-  value: userInput // Automatically escaped
+  value: userInput // 自動轉義
 });
 ```
 
-### Q: Data access authorization?
+### Q: 如何實作資料存取授權？
 
-**A:** Use authorization middleware:
+**A:** 使用授權中介軟體：
 
 ```typescript
 const authMiddleware = (getUserContext: () => UserContext): Middleware => {
   return async (query, next) => {
     const user = getUserContext();
-
+    
     if (query.table === 'admin_logs' && user.role !== 'admin') {
-      throw new Error('Access denied');
+      throw new Error('存取被拒');
     }
-
+    
     return next(query);
   };
 };
 ```
 
-## Troubleshooting
+## 故障排除
 
-### Q: Application hangs on shutdown?
+### Q: 應用程式關閉時卡住怎麼辦？
 
-**A:** Implement graceful shutdown:
+**A:** 實作優雅關閉：
 
 ```typescript
 async function gracefulShutdown() {
@@ -468,48 +468,48 @@ process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 ```
 
-### Q: "Too many connections" error?
+### Q: 遇到「連線數過多」錯誤怎麼辦？
 
-**A:** Check and optimize pool settings:
+**A:** 檢查並優化連線池設定：
 
 ```typescript
 const status = gateway.getProviderPoolStatus('mysql');
-console.log('Pool status:', status);
+console.log('連線池狀態:', status);
 
-// Monitor pool usage
+// 監控連線池使用率
 setInterval(() => {
   const status = gateway.getProviderPoolStatus('mysql');
   if (status && status.activeConnections / status.maxConnections > 0.8) {
-    console.warn('High connection usage:', status);
+    console.warn('連線池使用率過高:', status);
   }
 }, 10000);
 ```
 
-### Q: Debug slow queries?
+### Q: 如何除錯慢查詢？
 
-**A:** Enable query debugging:
+**A:** 啟用查詢除錯：
 
 ```typescript
 const debugMiddleware: Middleware = async (query, next) => {
-  console.log('Query:', JSON.stringify(query, null, 2));
-
+  console.log('查詢:', JSON.stringify(query, null, 2));
+  
   const start = Date.now();
   const result = await next(query);
   const duration = Date.now() - start;
-
+  
   if (duration > 1000) {
-    console.warn(`SLOW QUERY (${duration}ms):`, query);
+    console.warn(`慢查詢 (${duration}ms):`, query);
   }
-
+  
   return result;
 };
 ```
 
 ## Remote API Provider
 
-### Q: API response format requirements?
+### Q: API 回應格式有什麼要求？
 
-**A:** Must return `QueryResult` JSON:
+**A:** 必須回傳 `QueryResult` JSON：
 
 ```json
 {
@@ -517,9 +517,9 @@ const debugMiddleware: Middleware = async (query, next) => {
 }
 ```
 
-### Q: API authentication?
+### Q: 如何處理 API 認證？
 
-**A:** Use `bearerToken` or custom headers:
+**A:** 使用 `bearerToken` 或自訂標頭：
 
 ```typescript
 remote: {
@@ -531,33 +531,33 @@ remote: {
 }
 ```
 
-### Q: Rate limiting?
+### Q: 如何處理 API 速率限制？
 
-**A:** Implement rate limit middleware:
+**A:** 實作速率限制中介軟體：
 
 ```typescript
 const rateLimitMiddleware: Middleware = (() => {
   const requests = new Map();
-  const limit = 100; // per minute
-
+  const limit = 100; // 每分鐘
+  
   return async (query, next) => {
     const now = Date.now();
     const window = Math.floor(now / 60000) * 60000;
-
+    
     const count = requests.get(window) || 0;
     if (count >= limit) {
-      throw new Error('Rate limit exceeded');
+      throw new Error('超過速率限制');
     }
-
+    
     requests.set(window, count + 1);
     return next(query);
   };
 })();
 ```
 
-## More Resources
+## 更多資源
 
-- [Basic Usage Guide](./guides/basic-usage.md)
-- [Provider Documentation](./providers/)
+- [基本使用指南](./guides/basic-usage.zh-TW.md)
+- [Provider 文件](./providers/)
 - [GitHub Issues](https://github.com/wfp99/data-gateway/issues)
 - [GitHub Discussions](https://github.com/wfp99/data-gateway/discussions)

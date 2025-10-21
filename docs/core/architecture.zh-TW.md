@@ -1,10 +1,10 @@
-# Architecture Design
+# 架構設計
 
-Data Gateway adopts a modular and extensible architecture design, ensuring high flexibility and maintainability. This document details the core architectural concepts and design principles.
+Data Gateway 採用模組化和可擴展的架構設計，確保高度的靈活性和可維護性。本文件詳細說明核心架構概念和設計原則。
 
-## Overall Architecture
+## 整體架構
 
-### Architecture Diagram
+### 架構圖
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -56,16 +56,16 @@ Data Gateway adopts a modular and extensible architecture design, ensuring high 
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Core Components
+## 核心元件
 
-### 1. DataGateway (Gateway Core)
+### 1. DataGateway（閘道核心）
 
-DataGateway is the central coordinator of the entire system, responsible for:
+DataGateway 是整個系統的中央協調器，負責：
 
-- **Provider Management**: Register, initialize and manage multiple data providers
-- **Repository Management**: Create and manage repository instances
-- **Connection Lifecycle**: Unified management of all data source connections
-- **Connection Pool Monitoring**: Provide connection pool status monitoring and management
+- **Provider 管理**: 註冊、初始化和管理多個資料提供者
+- **Repository 管理**: 建立和管理儲存庫實例
+- **連線生命週期**: 統一管理所有資料來源的連線
+- **連線池監控**: 提供連線池狀態監控和管理
 
 ```typescript
 export class DataGateway {
@@ -79,14 +79,14 @@ export class DataGateway {
 }
 ```
 
-**Design Principles:**
-- **Single Responsibility**: Focus on coordination and management, not specific data operations
-- **Lazy Loading**: Providers are only loaded when actually used, reducing unnecessary dependencies
-- **Error Isolation**: Failure of a single Provider doesn't affect other Providers
+**設計原則:**
+- **單一職責**: 專注於協調和管理，不處理具體的資料操作
+- **懶載入**: Provider 只在實際使用時才載入，減少不必要的依賴
+- **錯誤隔離**: 單一 Provider 的失敗不會影響其他 Provider
 
-### 2. DataProvider (Data Provider)
+### 2. DataProvider（資料提供者）
 
-DataProvider is the abstract interface for data sources, defining unified data access methods:
+DataProvider 是資料來源的抽象介面，定義了統一的資料存取方法：
 
 ```typescript
 export interface DataProvider {
@@ -98,21 +98,21 @@ export interface DataProvider {
 }
 ```
 
-**Implementation Types:**
-- **MySQLProvider**: MySQL/MariaDB database support
-- **PostgreSQLProvider**: PostgreSQL database support
-- **SQLiteProvider**: SQLite file database support
-- **RemoteProvider**: HTTP/HTTPS API support
-- **CustomProvider**: Custom data source support
+**實現類型:**
+- **MySQLProvider**: MySQL/MariaDB 資料庫支援
+- **PostgreSQLProvider**: PostgreSQL 資料庫支援
+- **SQLiteProvider**: SQLite 檔案資料庫支援
+- **RemoteProvider**: HTTP/HTTPS API 支援
+- **CustomProvider**: 自訂資料來源支援
 
-**Design Principles:**
-- **Unified Interface**: All Providers implement the same interface for consistency
-- **Pluggable**: New Providers can be easily added without modifying core code
-- **Connection Pool Support**: Each Provider implements appropriate connection pool strategies based on its characteristics
+**設計原則:**
+- **統一介面**: 所有 Provider 實現相同的介面，確保一致性
+- **可插拔**: 新的 Provider 可以輕鬆加入，無需修改核心程式碼
+- **連線池支援**: 各 Provider 根據特性實現適合的連線池策略
 
-### 3. Repository (Repository)
+### 3. Repository（儲存庫）
 
-Repository implements the business logic for data access, providing high-level CRUD operations:
+Repository 實現了資料存取的業務邏輯，提供高層次的 CRUD 操作：
 
 ```typescript
 export class Repository<T = any> {
@@ -132,15 +132,15 @@ export class Repository<T = any> {
 }
 ```
 
-**Core Features:**
-- **CRUD Operations**: Complete Create, Read, Update, Delete functionality
-- **Query Construction**: Convert high-level queries to low-level Provider queries
-- **Field Mapping**: Automatically handle mapping between application field names and database fields
-- **Middleware Support**: Support custom processing logic before and after queries
+**核心功能:**
+- **CRUD 操作**: 完整的建立、讀取、更新、刪除功能
+- **查詢建構**: 將高層次查詢轉換為底層 Provider 查詢
+- **欄位對應**: 自動處理應用程式欄位名稱與資料庫欄位的對應
+- **中介軟體支援**: 支援查詢前後的自訂處理邏輯
 
-### 4. Middleware (Middleware)
+### 4. Middleware（中介軟體）
 
-Middleware provides a mechanism to inject custom logic before and after query execution:
+Middleware 提供了在查詢執行前後插入自訂邏輯的機制：
 
 ```typescript
 export type Middleware = (
@@ -149,16 +149,16 @@ export type Middleware = (
 ) => Promise<QueryResult<any>>;
 ```
 
-**Use Cases:**
-- **Logging**: Track all database operations
-- **Performance Monitoring**: Measure query execution time
-- **Data Validation**: Validate data before insert/update
-- **Caching**: Implement query result caching
-- **Access Control**: Restrict data access based on user roles
+**應用場景:**
+- **日誌記錄**: 追蹤所有資料庫操作
+- **效能監控**: 測量查詢執行時間
+- **資料驗證**: 在插入/更新前驗證資料
+- **快取**: 實現查詢結果快取
+- **權限控制**: 基於使用者角色限制資料存取
 
-### 5. EntityFieldMapper (Field Mapper)
+### 5. EntityFieldMapper（欄位對應器）
 
-EntityFieldMapper handles mapping between application object properties and database fields:
+EntityFieldMapper 處理應用程式物件屬性與資料庫欄位之間的對應：
 
 ```typescript
 export interface EntityFieldMapper<T> {
@@ -169,13 +169,13 @@ export interface EntityFieldMapper<T> {
 }
 ```
 
-**Implementation Types:**
-- **DefaultFieldMapper**: Default implementation with no transformation
-- **MappingFieldMapper**: Field transformation based on mapping tables
+**實現類型:**
+- **DefaultFieldMapper**: 預設實現，不進行任何轉換
+- **MappingFieldMapper**: 基於對應表的欄位轉換
 
-### 6. QueryObject (Query Object)
+### 6. QueryObject（查詢物件）
 
-QueryObject defines a unified query language supporting complex query conditions:
+QueryObject 定義了統一的查詢語言，支援複雜的查詢條件：
 
 ```typescript
 export interface Query {
@@ -193,9 +193,9 @@ export interface Query {
 }
 ```
 
-## Data Flow
+## 資料流程
 
-### 1. Query Flow
+### 1. 查詢流程
 
 ```
 Application Code
@@ -231,7 +231,7 @@ Middleware Chain (response)
 Application Code
 ```
 
-### 2. Connection Management Flow
+### 2. 連線管理流程
 
 ```
 DataGateway.build()
@@ -261,14 +261,14 @@ DataGateway.disconnectAll()
 Connection Pool Cleanup
 ```
 
-## Design Patterns
+## 設計模式
 
-### 1. Factory Pattern
+### 1. 工廠模式（Factory Pattern）
 
-DataGateway uses the factory pattern to dynamically create Provider instances:
+DataGateway 使用工廠模式動態建立 Provider 實例：
 
 ```typescript
-// Dynamically create Provider based on configuration
+// 根據設定動態建立 Provider
 switch (providerConfig.type) {
   case 'mysql':
     const { MySQLProvider } = await import('./dataProviders/MySQLProvider.js');
@@ -282,91 +282,91 @@ switch (providerConfig.type) {
 }
 ```
 
-### 2. Repository Pattern
+### 2. 儲存庫模式（Repository Pattern）
 
-Abstract data access logic, providing consistent API:
+抽象資料存取邏輯，提供一致的 API：
 
 ```typescript
-// Unified data access interface
+// 統一的資料存取介面
 const userRepo = gateway.getRepository('users');
 const orderRepo = gateway.getRepository('orders');
 
-// Same operation methods, different data sources
+// 相同的操作方法，不同的資料來源
 const users = await userRepo.findMany();  // MySQL
 const orders = await orderRepo.findMany(); // PostgreSQL
 ```
 
-### 3. Strategy Pattern
+### 3. 策略模式（Strategy Pattern）
 
-Different Providers implement different data access strategies:
+不同的 Provider 實現不同的資料存取策略：
 
 ```typescript
-// MySQL Strategy: Use mysql2 connection pool
-// PostgreSQL Strategy: Use pg connection pool
-// SQLite Strategy: Use file connections
-// Remote Strategy: Use HTTP requests
+// MySQL 策略：使用 mysql2 連線池
+// PostgreSQL 策略：使用 pg 連線池
+// SQLite 策略：使用檔案連線
+// Remote 策略：使用 HTTP 請求
 ```
 
-### 4. Chain of Responsibility Pattern
+### 4. 責任鏈模式（Chain of Responsibility）
 
-Middleware forms a chain of responsibility to process queries:
+Middleware 形成責任鏈處理查詢：
 
 ```typescript
 const middlewares = [validationMiddleware, loggingMiddleware, cachingMiddleware];
 // validation -> logging -> caching -> provider -> caching -> logging -> validation
 ```
 
-## Extensibility Design
+## 可擴展性設計
 
-### 1. New Provider Extension
+### 1. 新 Provider 擴展
 
-Adding new data source support:
+添加新的資料來源支援：
 
 ```typescript
-// 1. Implement DataProvider interface
+// 1. 實現 DataProvider 介面
 export class MongoDBProvider implements DataProvider {
   async connect(): Promise<void> { /* ... */ }
   async disconnect(): Promise<void> { /* ... */ }
   async query<T>(query: Query): Promise<QueryResult<T>> { /* ... */ }
 }
 
-// 2. Register in DataGateway
+// 2. 在 DataGateway 中註冊
 case 'mongodb':
   const { MongoDBProvider } = await import('./dataProviders/MongoDBProvider.js');
   provider = new MongoDBProvider(providerConfig.options);
   break;
 ```
 
-### 2. New Middleware Extension
+### 2. 新 Middleware 擴展
 
-Adding new middleware functionality:
+添加新的中介軟體功能：
 
 ```typescript
-// Authorization middleware
+// 權限控制中介軟體
 const authorizationMiddleware: Middleware = async (query, next) => {
   const user = getCurrentUser();
 
   if (query.type === 'DELETE' && !user.hasRole('admin')) {
-    throw new Error('Insufficient permissions');
+    throw new Error('權限不足');
   }
 
   return next(query);
 };
 ```
 
-### 3. New Query Feature Extension
+### 3. 新查詢功能擴展
 
-Extending QueryObject to support more query types:
+擴展 QueryObject 支援更多查詢類型：
 
 ```typescript
-// Support full-text search
+// 支援全文搜索
 interface FullTextSearch {
   type: 'FULLTEXT';
   fields: string[];
   query: string;
 }
 
-// Support geo queries
+// 支援地理查詢
 interface GeoQuery {
   type: 'GEO';
   field: string;
@@ -375,53 +375,53 @@ interface GeoQuery {
 }
 ```
 
-## Performance Considerations
+## 效能考量
 
-### 1. Connection Pool Strategy
+### 1. 連線池策略
 
-Different data sources adopt appropriate connection pool strategies:
+不同資料來源採用適合的連線池策略：
 
-- **MySQL/PostgreSQL**: Full connection pool with read-write separation support
-- **SQLite**: Read connection pool with single write connection
-- **Remote API**: No connection pool, using HTTP persistent connections
+- **MySQL/PostgreSQL**: 完整連線池，支援讀寫分離
+- **SQLite**: 讀取連線池，寫入單一連線
+- **Remote API**: 無連線池，使用 HTTP 持久連線
 
-### 2. Lazy Loading Optimization
+### 2. 懶載入優化
 
-- **Provider Lazy Loading**: Only load actually used Providers
-- **Query Optimization**: Only query needed fields
-- **Result Pagination**: Support pagination for large result sets
+- **Provider 懶載入**: 只載入實際使用的 Provider
+- **查詢優化**: 只查詢需要的欄位
+- **結果分頁**: 支援大結果集的分頁處理
 
-### 3. Caching Strategy
+### 3. 快取策略
 
-- **Query Result Caching**: Implemented at middleware layer
-- **Connection Reuse**: Automatically managed by connection pools
-- **Metadata Caching**: Cache table schemas and other metadata
+- **查詢結果快取**: Middleware 層實現
+- **連線重用**: 連線池自動管理
+- **元數據快取**: 表結構等元數據快取
 
-## Security Considerations
+## 安全性考量
 
-### 1. SQL Injection Protection
+### 1. SQL 注入防護
 
-All Providers use parameterized queries:
+所有 Provider 使用參數化查詢：
 
 ```typescript
-// Automatic parameterization prevents SQL injection
+// 自動參數化，防止 SQL 注入
 const users = await userRepo.findMany({
   field: 'email',
   op: '=',
-  value: userInput  // Automatically escaped
+  value: userInput  // 自動轉義
 });
 ```
 
-### 2. Connection Security
+### 2. 連線安全
 
-- **SSL/TLS Support**: All database Providers support encrypted connections
-- **Authentication Management**: Support multiple authentication methods
-- **Access Control**: Fine-grained permission control implemented at middleware layer
+- **SSL/TLS 支援**: 所有資料庫 Provider 支援加密連線
+- **認證管理**: 支援多種認證方式
+- **權限控制**: Middleware 層實現細粒度權限控制
 
-### 3. Data Validation
+### 3. 資料驗證
 
-- **Input Validation**: Data validation implemented at middleware layer
-- **Type Safety**: TypeScript provides compile-time type checking
-- **Range Checking**: Automatic validation of data ranges and formats
+- **輸入驗證**: Middleware 層實現資料驗證
+- **型別安全**: TypeScript 提供編譯時型別檢查
+- **範圍檢查**: 自動驗證資料範圍和格式
 
-This architectural design ensures Data Gateway's flexibility, extensibility, and maintainability while providing excellent performance and security.
+這個架構設計確保了 Data Gateway 的靈活性、可擴展性和可維護性，同時提供了優秀的效能和安全性。

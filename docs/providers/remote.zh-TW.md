@@ -1,18 +1,18 @@
 # Remote API Provider
 
-Remote API Provider is a data provider that accesses remote APIs via HTTP/HTTPS. It converts query objects into HTTP requests, suitable for integrating third-party APIs or microservice architectures.
+Remote API Provider 是透過 HTTP/HTTPS 存取遠端 API 的資料提供者。它將查詢物件轉換為 HTTP 請求，適合整合第三方 API 或微服務架構。
 
-## Features
+## 特點
 
-- 🌐 Support for any RESTful API endpoint
-- 🔐 Built-in Bearer Token authentication support
-- 📤 Send query objects via POST requests
-- 🔄 Unified query interface, consistent with other providers
-- ⚡ No additional database drivers required
+- 🌐 支援任何 RESTful API 端點
+- 🔐 內建 Bearer Token 認證支援
+- 📤 透過 POST 請求傳送查詢物件
+- 🔄 統一的查詢介面，與其他 Provider 一致
+- ⚡ 無需額外資料庫驅動程式
 
-## Basic Usage
+## 基本使用
 
-### Simple Configuration
+### 簡單設定
 
 ```typescript
 import { DataGateway, RemoteProviderOptions } from '@wfp99/data-gateway';
@@ -35,7 +35,7 @@ const config = {
 const gateway = await DataGateway.build(config);
 ```
 
-### Configuration with Authentication
+### 含認證的設定
 
 ```typescript
 const config = {
@@ -59,29 +59,29 @@ const config = {
 };
 ```
 
-## Configuration Options
+## 設定選項
 
 ```typescript
 interface RemoteProviderOptions {
-  /** API endpoint URL */
+  /** API 端點 URL */
   endpoint: string;
 
-  /** Bearer Token authentication (optional) */
+  /** Bearer Token 認證（可選） */
   bearerToken?: string;
 
-  /** Additional HTTP headers (optional) */
+  /** 額外的 HTTP 標頭（可選） */
   headers?: Record<string, string>;
 
-  /** Request timeout in milliseconds (default: 30000) */
+  /** 請求超時時間（毫秒，預設：30000） */
   timeout?: number;
 }
 ```
 
-## How It Works
+## 工作原理
 
-Remote Provider converts all query operations into HTTP POST requests:
+Remote Provider 將所有查詢操作轉換為 HTTP POST 請求：
 
-### Request Format
+### 請求格式
 
 ```http
 POST /data HTTP/1.1
@@ -102,9 +102,9 @@ Authorization: Bearer your-secret-api-token
 }
 ```
 
-### Expected Response Format
+### 預期回應格式
 
-The remote API should return JSON conforming to the `QueryResult` format:
+遠端 API 應該回傳符合 `QueryResult` 格式的 JSON：
 
 ```json
 {
@@ -115,7 +115,7 @@ The remote API should return JSON conforming to the `QueryResult` format:
 }
 ```
 
-Or for INSERT operations:
+或對於 INSERT 操作：
 
 ```json
 {
@@ -123,7 +123,7 @@ Or for INSERT operations:
 }
 ```
 
-Or for UPDATE/DELETE operations:
+或對於 UPDATE/DELETE 操作：
 
 ```json
 {
@@ -131,21 +131,21 @@ Or for UPDATE/DELETE operations:
 }
 ```
 
-## Basic Operation Examples
+## 基本操作範例
 
-### Querying Data
+### 查詢資料
 
 ```typescript
 const userRepo = gateway.getRepository('users');
 
-// Simple query
+// 簡單查詢
 const activeUsers = await userRepo?.findMany({
   field: 'status',
   op: '=',
   value: 'active'
 });
 
-// Complex query
+// 複雜查詢
 const result = await userRepo?.find({
   fields: ['id', 'name', 'email', 'created_at'],
   where: {
@@ -159,10 +159,10 @@ const result = await userRepo?.find({
   offset: 0
 });
 
-console.log('Query results:', result?.rows);
+console.log('查詢結果:', result?.rows);
 ```
 
-### Creating Data
+### 建立資料
 
 ```typescript
 const newUserId = await userRepo?.insert({
@@ -172,21 +172,21 @@ const newUserId = await userRepo?.insert({
   status: 'active'
 });
 
-console.log('New user ID:', newUserId);
+console.log('新建使用者 ID:', newUserId);
 ```
 
-### Updating Data
+### 更新資料
 
 ```typescript
 const updatedRows = await userRepo?.update(
-  { status: 'inactive' },  // Update data
-  { field: 'id', op: '=', value: 123 }  // Condition
+  { status: 'inactive' },  // 更新資料
+  { field: 'id', op: '=', value: 123 }  // 條件
 );
 
-console.log(`Updated ${updatedRows} records`);
+console.log(`更新了 ${updatedRows} 筆資料`);
 ```
 
-### Deleting Data
+### 刪除資料
 
 ```typescript
 const deletedRows = await userRepo?.delete({
@@ -195,12 +195,12 @@ const deletedRows = await userRepo?.delete({
   value: 'inactive'
 });
 
-console.log(`Deleted ${deletedRows} records`);
+console.log(`刪除了 ${deletedRows} 筆資料`);
 ```
 
-## Advanced Features
+## 進階功能
 
-### Custom Headers
+### 自訂標頭
 
 ```typescript
 const config = {
@@ -214,7 +214,7 @@ const config = {
           'Content-Type': 'application/json',
           'X-API-Version': '2023-10-01',
           'X-Request-Source': 'data-gateway',
-          'Accept-Language': 'en-US'
+          'Accept-Language': 'zh-TW'
         }
       } as RemoteProviderOptions
     }
@@ -225,12 +225,12 @@ const config = {
 };
 ```
 
-### Dynamic Authentication
+### 動態認證
 
 ```typescript
-// Example of dynamic token retrieval
+// 動態取得 Token 的範例
 async function getApiToken(): Promise<string> {
-  // Retrieve token from authentication service
+  // 從認證服務取得 Token
   const response = await fetch('https://auth.example.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -261,9 +261,9 @@ const config = {
 };
 ```
 
-## Error Handling
+## 錯誤處理
 
-Remote Provider provides detailed error information:
+Remote Provider 提供詳細的錯誤資訊：
 
 ```typescript
 try {
@@ -272,32 +272,32 @@ try {
     op: '=',
     value: 'test@example.com'
   });
-  console.log('Success:', result);
+  console.log('成功:', result);
 } catch (error) {
-  console.error('API request failed:', error);
+  console.error('API 請求失敗:', error);
 
   if (error instanceof Error) {
     if (error.message.includes('401')) {
-      console.error('Authentication failed - check Bearer Token');
+      console.error('認證失敗 - 檢查 Bearer Token');
     } else if (error.message.includes('timeout')) {
-      console.error('Request timeout - check network connection');
+      console.error('請求超時 - 檢查網路連線');
     } else if (error.message.includes('500')) {
-      console.error('Server error - contact API provider');
+      console.error('伺服器錯誤 - 聯繫 API 提供者');
     }
   }
 }
 ```
 
-Common error types:
-- `401 Unauthorized`: Authentication failed
-- `403 Forbidden`: Insufficient permissions
-- `404 Not Found`: API endpoint not found
-- `500 Internal Server Error`: Server error
-- `timeout`: Request timeout
+常見錯誤類型：
+- `401 Unauthorized`: 認證失敗
+- `403 Forbidden`: 權限不足
+- `404 Not Found`: API 端點不存在
+- `500 Internal Server Error`: 伺服器錯誤
+- `timeout`: 請求超時
 
-## Server-Side Implementation Example
+## 伺服器端實作範例
 
-Here's a simple Express.js server example showing how to handle requests from Remote Provider:
+以下是一個簡單的 Express.js 伺服器範例，展示如何處理來自 Remote Provider 的請求：
 
 ```javascript
 const express = require('express');
@@ -305,7 +305,7 @@ const app = express();
 
 app.use(express.json());
 
-// Authentication middleware
+// 認證中介軟體
 function authenticate(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token || token !== 'your-secret-api-token') {
@@ -314,7 +314,7 @@ function authenticate(req, res, next) {
   next();
 }
 
-// Handle Data Gateway queries
+// 處理 Data Gateway 查詢
 app.post('/data', authenticate, async (req, res) => {
   const query = req.body;
 
@@ -350,8 +350,8 @@ app.post('/data', authenticate, async (req, res) => {
 });
 
 async function handleSelect(query) {
-  // Implement query logic
-  // This can connect to databases, file systems, or other data sources
+  // 實作查詢邏輯
+  // 這裡可以連接到資料庫、檔案系統或其他資料來源
   return [
     { id: 1, name: 'John', email: 'john@example.com' },
     { id: 2, name: 'Jane', email: 'jane@example.com' }
@@ -359,28 +359,28 @@ async function handleSelect(query) {
 }
 
 async function handleInsert(query) {
-  // Implement insert logic
+  // 實作插入邏輯
   return Math.floor(Math.random() * 1000);
 }
 
 async function handleUpdate(query) {
-  // Implement update logic
+  // 實作更新邏輯
   return 1;
 }
 
 async function handleDelete(query) {
-  // Implement delete logic
+  // 實作刪除邏輯
   return 1;
 }
 
 app.listen(3000, () => {
-  console.log('API server running at http://localhost:3000');
+  console.log('API 伺服器運行於 http://localhost:3000');
 });
 ```
 
-## Third-Party API Integration
+## 整合第三方 API
 
-### GitHub API Example
+### GitHub API 範例
 
 ```typescript
 const config = {
@@ -403,7 +403,7 @@ const config = {
 };
 ```
 
-### Shopify API Example
+### Shopify API 範例
 
 ```typescript
 const config = {
@@ -427,12 +427,12 @@ const config = {
 };
 ```
 
-## Performance Considerations
+## 效能考量
 
-### Request Optimization
+### 請求最佳化
 
 ```typescript
-// Batch queries
+// 批次查詢
 const queries = [
   { field: 'category', op: '=', value: 'electronics' },
   { field: 'category', op: '=', value: 'books' },
@@ -444,53 +444,53 @@ const results = await Promise.all(
 );
 ```
 
-### Caching Strategy
+### 快取策略
 
 ```typescript
-// Simple in-memory cache example
+// 簡單的記憶體快取範例
 const cache = new Map();
 
 async function cachedQuery(repo, query, cacheKey) {
   if (cache.has(cacheKey)) {
-    console.log('Retrieved data from cache');
+    console.log('從快取取得資料');
     return cache.get(cacheKey);
   }
 
   const result = await repo.findMany(query);
   cache.set(cacheKey, result);
 
-  // Clear cache after 10 minutes
+  // 10 分鐘後清除快取
   setTimeout(() => cache.delete(cacheKey), 10 * 60 * 1000);
 
   return result;
 }
 ```
 
-## Limitations
+## 限制
 
-Remote Provider has the following limitations:
+Remote Provider 有以下限制：
 
-1. **No RAW Query Support**: For security reasons, raw SQL queries are not supported
-2. **Network Dependency**: Depends on network connection, may have latency or instability
-3. **No Connection Pool**: HTTP requests cannot be pooled like database connections
-4. **Limited Transaction Support**: Cannot provide database-level transaction guarantees
+1. **不支援 RAW 查詢**: 基於安全考量，不支援原始 SQL 查詢
+2. **網路依賴**: 依賴網路連線，可能有延遲或不穩定
+3. **無連線池**: HTTP 請求無法像資料庫連線一樣進行池化管理
+4. **有限的事務支援**: 無法提供資料庫級別的事務保證
 
-## Security Considerations
+## 安全性考量
 
-### Transport Security
+### 傳輸安全
 
 ```typescript
-// Use HTTPS endpoints
+// 使用 HTTPS 端點
 const config = {
   providers: {
     api: {
       type: 'remote',
       options: {
-        endpoint: 'https://secure-api.example.com/data',  // Use HTTPS
-        bearerToken: process.env.API_TOKEN,  // Get token from environment variables
+        endpoint: 'https://secure-api.example.com/data',  // 使用 HTTPS
+        bearerToken: process.env.API_TOKEN,  // 從環境變數取得 Token
         headers: {
           'User-Agent': 'DataGateway/1.0',
-          'X-API-Key': process.env.API_KEY  // Additional API key
+          'X-API-Key': process.env.API_KEY  // 額外的 API Key
         }
       }
     }
@@ -498,10 +498,10 @@ const config = {
 };
 ```
 
-### Token Management
+### Token 管理
 
 ```typescript
-// Secure token management
+// 安全的 Token 管理
 class TokenManager {
   private token: string | null = null;
   private expiry: number = 0;
@@ -511,7 +511,7 @@ class TokenManager {
       return this.token;
     }
 
-    // Refresh token
+    // 重新取得 Token
     const response = await fetch('https://auth.example.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -533,7 +533,7 @@ const tokenManager = new TokenManager();
 const token = await tokenManager.getToken();
 ```
 
-## Complete Example
+## 完整範例
 
 ```typescript
 import { DataGateway, RemoteProviderOptions } from '@wfp99/data-gateway';
@@ -559,22 +559,22 @@ async function remoteApiExample() {
   try {
     const postRepo = gateway.getRepository('posts');
 
-    // Query posts
+    // 查詢文章
     const posts = await postRepo?.find({
       fields: ['id', 'title', 'body'],
       limit: 5
     });
 
-    console.log('Post list:', posts?.rows);
+    console.log('文章列表:', posts?.rows);
 
-    // Create new post
+    // 建立新文章
     const newPostId = await postRepo?.insert({
-      title: 'My New Post',
-      body: 'This is the post content',
+      title: '我的新文章',
+      body: '這是文章內容',
       userId: 1
     });
 
-    console.log('New post ID:', newPostId);
+    console.log('新文章 ID:', newPostId);
 
   } finally {
     await gateway.disconnectAll();
@@ -584,4 +584,4 @@ async function remoteApiExample() {
 remoteApiExample().catch(console.error);
 ```
 
-Remote Provider provides flexible API integration capabilities for Data Gateway, allowing you to access various remote data sources with a unified interface.
+Remote Provider 為 Data Gateway 提供了靈活的 API 整合能力，讓您可以用統一的介面存取各種遠端資料來源。

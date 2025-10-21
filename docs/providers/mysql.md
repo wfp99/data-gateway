@@ -1,18 +1,18 @@
 # MySQL Provider
 
-MySQL Provider 是專為 MySQL 和 MariaDB 資料庫設計的 Data Gateway 資料提供者。它實現了 `DataProvider` 介面，支援連線池、查詢建構和錯誤處理。
+The MySQL Provider is a Data Gateway data provider specifically designed for MySQL and MariaDB databases. It implements the `DataProvider` interface, supporting connection pooling, query construction, and error handling.
 
-## 安裝
+## Installation
 
-MySQL Provider 需要 `mysql2` 套件作為同級依賴：
+MySQL Provider requires the `mysql2` package as a peer dependency:
 
 ```bash
 npm install mysql2
 ```
 
-## 基本使用
+## Basic Usage
 
-### 連線設定
+### Connection Configuration
 
 ```typescript
 import { DataGateway } from '@wfp99/data-gateway';
@@ -39,41 +39,9 @@ const gateway = await DataGateway.build({
 });
 ```
 
-### 連線池設定
+### Connection Pool Configuration
 
-MySQL Provider 預設啟用連線池，可透過 `pool` 選項設定：
-
-```typescript
-const gateway = await DataGateway.build({
-  providers: {
-    mysql: {
-      type: 'mysql',
-      options: {
-        host: 'localhost',
-        port: 3306,
-        user: 'root',
-        password: 'password',
-        database: 'mydb',
-        pool: {
-          usePool: true,              // 啟用連線池（預設：true）
-          connectionLimit: 10,        // 最大連線數（預設：10）
-          queueLimit: 0,             // 最大排隊請求數（預設：0，無限制）
-          acquireTimeout: 60000,     // 連線取得超時（預設：60000ms）
-          timeout: 600000,           // 閒置連線超時（預設：600000ms）
-          preConnect: false,         // 啟動時預先建立連線（預設：false）
-        },
-      },
-    },
-  },
-  repositories: {
-    users: { provider: 'mysql', table: 'users' },
-  },
-});
-```
-
-### 停用連線池
-
-如需使用單一連線而非連線池：
+MySQL Provider enables connection pooling by default, configurable through `pool` options:
 
 ```typescript
 const gateway = await DataGateway.build({
@@ -87,7 +55,12 @@ const gateway = await DataGateway.build({
         password: 'password',
         database: 'mydb',
         pool: {
-          usePool: false,  // 停用連線池
+          usePool: true,              // Enable connection pool (default: true)
+          connectionLimit: 10,        // Maximum connections (default: 10)
+          queueLimit: 0,             // Maximum queued requests (default: 0, unlimited)
+          acquireTimeout: 60000,     // Connection acquire timeout (default: 60000ms)
+          timeout: 600000,           // Idle connection timeout (default: 600000ms)
+          preConnect: false,         // Pre-establish connections on startup (default: false)
         },
       },
     },
@@ -98,13 +71,40 @@ const gateway = await DataGateway.build({
 });
 ```
 
-## 連線選項
+### Disabling Connection Pool
 
-MySQL Provider 支援 `mysql2/promise` 的所有 `ConnectionOptions`：
+To use a single connection instead of a connection pool:
+
+```typescript
+const gateway = await DataGateway.build({
+  providers: {
+    mysql: {
+      type: 'mysql',
+      options: {
+        host: 'localhost',
+        port: 3306,
+        user: 'root',
+        password: 'password',
+        database: 'mydb',
+        pool: {
+          usePool: false,  // Disable connection pool
+        },
+      },
+    },
+  },
+  repositories: {
+    users: { provider: 'mysql', table: 'users' },
+  },
+});
+```
+
+## Connection Options
+
+MySQL Provider supports all `ConnectionOptions` from `mysql2/promise`:
 
 ```typescript
 interface MySQLProviderOptions extends ConnectionOptions {
-  // 基本連線選項
+  // Basic connection options
   host?: string;
   port?: number;
   user?: string;
@@ -113,18 +113,18 @@ interface MySQLProviderOptions extends ConnectionOptions {
   charset?: string;
   timezone?: string;
 
-  // SSL 設定
+  // SSL configuration
   ssl?: string | (tls.SecureContextOptions & {
     rejectUnauthorized?: boolean;
   });
 
-  // 連線行為
+  // Connection behavior
   connectTimeout?: number;
   acquireTimeout?: number;
   timeout?: number;
   reconnect?: boolean;
 
-  // 其他選項
+  // Other options
   multipleStatements?: boolean;
   dateStrings?: boolean | Array<'TIMESTAMP' | 'DATETIME' | 'DATE'>;
   supportBigNumbers?: boolean;
@@ -132,27 +132,27 @@ interface MySQLProviderOptions extends ConnectionOptions {
   insertIdAsNumber?: boolean;
   decimalNumbers?: boolean;
 
-  // 連線池設定
+  // Connection pool configuration
   pool?: ConnectionPoolConfig;
 }
 ```
 
-## 字符集與編碼設定
+## Character Set and Encoding Configuration
 
-### UTF8MB4 字符集（強烈建議）
+### UTF8MB4 Character Set (Highly Recommended)
 
-**重要：** MySQL Provider 預設使用 `utf8mb4` 字符集，這是支援完整 Unicode 字符（包括 emoji、稀有漢字等）的必要設定。
+**Important:** MySQL Provider uses `utf8mb4` character set by default, which is essential for full Unicode character support (including emoji, rare Chinese characters, etc.).
 
-#### 為什麼需要 UTF8MB4？
+#### Why UTF8MB4?
 
-MySQL 的 `utf8` 字符集只支援 3 字節的 UTF-8 字符，無法正確儲存：
-- Emoji 表情符號：😀、🎉、❤️
-- 某些稀有漢字：𠮷、𨋢
-- 部分符號：𝕏、🇹🇼
+MySQL's `utf8` character set only supports 3-byte UTF-8 characters and cannot properly store:
+- Emoji characters: 😀, 🎉, ❤️
+- Some rare Chinese characters: 𠮷, 𨋢
+- Certain symbols: 𝕏, 🇹🇼
 
-而 `utf8mb4` 支援完整的 4 字節 UTF-8 編碼，可以正確處理所有 Unicode 字符。
+`utf8mb4` supports full 4-byte UTF-8 encoding and can correctly handle all Unicode characters.
 
-#### 應用程式層級配置
+#### Application Level Configuration
 
 ```typescript
 const gateway = await DataGateway.build({
@@ -164,7 +164,7 @@ const gateway = await DataGateway.build({
         user: 'app_user',
         password: 'password',
         database: 'mydb',
-        charset: 'utf8mb4',  // 預設值，支援完整 Unicode
+        charset: 'utf8mb4',  // Default value, supports full Unicode
       },
     },
   },
@@ -174,22 +174,22 @@ const gateway = await DataGateway.build({
 });
 ```
 
-#### 資料庫層級配置
+#### Database Level Configuration
 
-除了應用程式配置外，還需要確保 MySQL 資料庫和資料表使用正確的字符集：
+In addition to application configuration, ensure your MySQL database and tables use the correct character set:
 
 ```sql
--- 1. 建立資料庫時指定字符集
+-- 1. Create database with character set
 CREATE DATABASE mydb
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
--- 2. 修改現有資料庫字符集
+-- 2. Modify existing database character set
 ALTER DATABASE mydb
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
--- 3. 建立資料表時指定字符集
+-- 3. Create table with character set
 CREATE TABLE users (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
@@ -197,96 +197,96 @@ CREATE TABLE users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. 修改現有資料表字符集
+-- 4. Modify existing table character set
 ALTER TABLE users
   CONVERT TO CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 ```
 
-#### 驗證字符集配置
+#### Verify Character Set Configuration
 
 ```sql
--- 檢查資料庫字符集
+-- Check database character set
 SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
 FROM information_schema.SCHEMATA
 WHERE SCHEMA_NAME = 'mydb';
 
--- 檢查資料表字符集
+-- Check table character set
 SHOW CREATE TABLE users;
 
--- 檢查欄位字符集
+-- Check column character set
 SELECT COLUMN_NAME, CHARACTER_SET_NAME, COLLATION_NAME
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = 'mydb' AND TABLE_NAME = 'users';
 ```
 
-#### 測試 UTF8MB4 支援
+#### Testing UTF8MB4 Support
 
 ```typescript
-// 測試寫入包含 emoji 和多語言字符的資料
+// Test inserting data with emoji and multi-language characters
 const userRepo = gateway.getRepository('users');
 
 await userRepo.insert({
-  name: '張三',
-  bio: '我是一名工程師 👨‍💻，喜歡旅遊 🌍',
-  status: '活躍中 ✨'
+  name: 'John Smith',
+  bio: 'Software engineer 👨‍💻, loves traveling 🌍',
+  status: 'Active ✨'
 });
 
-// 讀取資料並驗證
+// Read data and verify
 const user = await userRepo.findOne({
   field: 'name',
   op: '=',
-  value: '張三'
+  value: 'John Smith'
 });
 
-console.log(user.bio); // 應該正確顯示：我是一名工程師 👨‍💻，喜歡旅遊 🌍
+console.log(user.bio); // Should display correctly: Software engineer 👨‍💻, loves traveling 🌍
 ```
 
-#### 常見問題
+#### Common Questions
 
-**Q: 為什麼我的 emoji 顯示為 `????`？**
+**Q: Why do my emoji show as `????`?**
 
-A: 這通常是因為：
-1. 資料庫或資料表未使用 `utf8mb4` 字符集
-2. 連線時未指定 `charset: 'utf8mb4'`
-3. VARCHAR 欄位長度不足（utf8mb4 每字符最多 4 字節）
+A: This is usually because:
+1. Database or table does not use `utf8mb4` character set
+2. Connection does not specify `charset: 'utf8mb4'`
+3. VARCHAR field length is insufficient (utf8mb4 uses up to 4 bytes per character)
 
-**Q: VARCHAR 欄位長度如何計算？**
+**Q: How to calculate VARCHAR field length?**
 
-A: 在 `utf8mb4` 中，VARCHAR(100) 表示最多 100 個字符，但：
-- 每個 ASCII 字符佔 1 字節
-- 每個中文字符佔 3 字節
-- 每個 emoji 佔 4 字節
+A: In `utf8mb4`, VARCHAR(100) means up to 100 characters, but:
+- Each ASCII character uses 1 byte
+- Each Chinese character uses 3 bytes
+- Each emoji uses 4 bytes
 
-如果需要儲存 100 個中文字符，需要確保資料表定義允許足夠的字節數。
+If you need to store 100 Chinese characters, ensure the table definition allows sufficient bytes.
 
-**Q: 如何在舊專案中遷移到 utf8mb4？**
+**Q: How to migrate existing projects to utf8mb4?**
 
-A: 建議步驟：
-1. 備份現有資料
-2. 修改資料庫字符集
-3. 修改資料表字符集（使用 `ALTER TABLE ... CONVERT TO`）
-4. 更新應用程式連線設定
-5. 測試資料完整性
+A: Recommended steps:
+1. Backup existing data
+2. Modify database character set
+3. Modify table character set (using `ALTER TABLE ... CONVERT TO`)
+4. Update application connection settings
+5. Test data integrity
 
-#### 字符集相關警告
+#### Character Set Warnings
 
-如果您明確指定了非 `utf8mb4` 的字符集，Provider 會在日誌中記錄警告訊息：
+If you explicitly specify a character set other than `utf8mb4`, the Provider will log a warning message:
 
 ```
 [WARN] MySQL charset is not utf8mb4. Emoji and some Unicode characters may not be stored correctly.
 ```
 
-建議始終使用 `utf8mb4` 以確保完整的 Unicode 支援。
+We recommend always using `utf8mb4` to ensure full Unicode support.
 
-## 查詢功能
+## Query Features
 
-### 基本 CRUD 操作
+### Basic CRUD Operations
 
 ```typescript
 const userRepo = gateway.getRepository('users');
 
-// 建立使用者
+// Create user
 const userId = await userRepo.insert({
   name: 'John Doe',
   email: 'john@example.com',
@@ -294,20 +294,20 @@ const userId = await userRepo.insert({
   created_at: new Date()
 });
 
-// 查詢使用者
+// Query users
 const users = await userRepo.findMany({
   field: 'age',
   op: '>',
   value: 18,
 });
 
-// 更新使用者
+// Update user
 const updatedRows = await userRepo.update(
   { email: 'john.doe@example.com', updated_at: new Date() },
   { field: 'id', op: '=', value: userId }
 );
 
-// 刪除使用者
+// Delete user
 const deletedRows = await userRepo.delete({
   field: 'id',
   op: '=',
@@ -315,10 +315,10 @@ const deletedRows = await userRepo.delete({
 });
 ```
 
-### 複雜查詢
+### Complex Queries
 
 ```typescript
-// AND/OR 條件
+// AND/OR conditions
 const activeAdults = await userRepo.findMany({
   and: [
     { field: 'status', op: '=', value: 'active' },
@@ -326,21 +326,21 @@ const activeAdults = await userRepo.findMany({
   ],
 });
 
-// LIKE 查詢
+// LIKE queries
 const johnUsers = await userRepo.findMany({
   field: 'name',
   op: 'LIKE',
   value: 'John%'
 });
 
-// IN 查詢
+// IN queries
 const specificUsers = await userRepo.findMany({
   field: 'id',
   op: 'IN',
   values: [1, 2, 3, 4, 5],
 });
 
-// BETWEEN 查詢
+// BETWEEN queries
 const ageRangeUsers = await userRepo.findMany({
   field: 'age',
   op: 'BETWEEN',
@@ -348,10 +348,10 @@ const ageRangeUsers = await userRepo.findMany({
 });
 ```
 
-### 聚合查詢
+### Aggregate Queries
 
 ```typescript
-// 統計查詢
+// Statistical queries
 const stats = await userRepo.find({
   fields: [
     'department',
@@ -371,10 +371,10 @@ const stats = await userRepo.find({
 });
 ```
 
-### 分頁查詢
+### Pagination
 
 ```typescript
-// 第一頁
+// First page
 const page1 = await userRepo.find({
   where: { field: 'status', op: '=', value: 'active' },
   orderBy: [{ field: 'created_at', direction: 'DESC' }],
@@ -382,7 +382,7 @@ const page1 = await userRepo.find({
   offset: 0
 });
 
-// 第二頁
+// Second page
 const page2 = await userRepo.find({
   where: { field: 'status', op: '=', value: 'active' },
   orderBy: [{ field: 'created_at', direction: 'DESC' }],
@@ -391,12 +391,12 @@ const page2 = await userRepo.find({
 });
 ```
 
-## 進階查詢功能
+## Advanced Query Features
 
-### 子查詢支援
+### Subquery Support
 
 ```typescript
-// 找出薪水高於平均值的使用者
+// Find users with salary above average
 const aboveAverageUsers = await userRepo.find({
   where: {
     field: 'salary',
@@ -409,7 +409,7 @@ const aboveAverageUsers = await userRepo.find({
   }
 });
 
-// 找出有訂單的使用者
+// Find users with orders
 const usersWithOrders = await userRepo.find({
   where: {
     field: 'id',
@@ -428,10 +428,10 @@ const usersWithOrders = await userRepo.find({
 });
 ```
 
-### 複雜 AND/OR 條件
+### Complex AND/OR Conditions
 
 ```typescript
-// 巢狀條件的複雜篩選
+// Nested conditions for complex filtering
 const complexQuery = await userRepo.find({
   where: {
     and: [
@@ -459,162 +459,162 @@ const complexQuery = await userRepo.find({
 });
 ```
 
-## 連線池監控
+## Connection Pool Monitoring
 
-MySQL Provider 提供豐富的連線池狀態監控：
+MySQL Provider provides rich connection pool status monitoring:
 
 ```typescript
-// 取得特定提供者的連線池狀態
+// Get connection pool status for specific provider
 const poolStatus = gateway.getProviderPoolStatus('mysql');
 if (poolStatus) {
-  console.log('MySQL 連線池狀態:');
-  console.log(`總連線數: ${poolStatus.totalConnections}`);
-  console.log(`使用中連線: ${poolStatus.activeConnections}`);
-  console.log(`閒置連線: ${poolStatus.idleConnections}`);
-  console.log(`最大連線數: ${poolStatus.maxConnections}`);
+  console.log('MySQL Connection Pool Status:');
+  console.log(`Total connections: ${poolStatus.totalConnections}`);
+  console.log(`Active connections: ${poolStatus.activeConnections}`);
+  console.log(`Idle connections: ${poolStatus.idleConnections}`);
+  console.log(`Max connections: ${poolStatus.maxConnections}`);
 
-  // 計算使用率
+  // Calculate utilization rate
   const utilizationRate = (poolStatus.activeConnections / poolStatus.maxConnections * 100).toFixed(1);
-  console.log(`使用率: ${utilizationRate}%`);
+  console.log(`Utilization: ${utilizationRate}%`);
 }
 
-// 設定連線池監控
+// Set up connection pool monitoring
 setInterval(() => {
   const status = gateway.getProviderPoolStatus('mysql');
   if (status) {
     const utilization = status.activeConnections / status.maxConnections;
 
     if (utilization > 0.8) {
-      console.warn(`MySQL 連線池使用率過高: ${Math.round(utilization * 100)}%`);
+      console.warn(`MySQL connection pool utilization too high: ${Math.round(utilization * 100)}%`);
     }
 
     if (status.activeConnections === status.maxConnections) {
-      console.error('MySQL 連線池已滿，可能需要增加 connectionLimit');
+      console.error('MySQL connection pool exhausted, consider increasing connectionLimit');
     }
   }
-}, 30000); // 每 30 秒檢查一次
+}, 30000); // Check every 30 seconds
 ```
 
-## MySQL 特定功能
+## MySQL-Specific Features
 
-### 處理大數值
+### Handling Large Numbers
 
 ```typescript
-// 設定大數值處理
+// Configure large number handling
 mysql: {
   type: 'mysql',
   options: {
     host: 'localhost',
-    // ... 其他設定
-    supportBigNumbers: true,      // 支援大數值
-    bigNumberStrings: true,       // 將大數值轉為字串
-    insertIdAsNumber: true,       // INSERT ID 為數字類型
-    decimalNumbers: true          // 小數點數值為數字類型
+    // ... other settings
+    supportBigNumbers: true,      // Support large numbers
+    bigNumberStrings: true,       // Convert large numbers to strings
+    insertIdAsNumber: true,       // INSERT ID as number type
+    decimalNumbers: true          // Decimal numbers as number type
   }
 }
 
-// 處理 BIGINT 欄位
+// Handle BIGINT fields
 const result = await userRepo.insert({
   name: 'Test User',
-  big_number_field: '9223372036854775807'  // BIGINT 最大值
+  big_number_field: '9223372036854775807'  // BIGINT maximum value
 });
 ```
 
-### 處理日期和時間
+### Date and Time Handling
 
 ```typescript
-// 設定日期字串處理
+// Configure date string handling
 mysql: {
   type: 'mysql',
   options: {
     host: 'localhost',
-    // ... 其他設定
-    dateStrings: ['DATE', 'DATETIME'],  // 指定欄位類型返回字串
-    timezone: 'local'                   // 設定時區
+    // ... other settings
+    dateStrings: ['DATE', 'DATETIME'],  // Specify field types to return as strings
+    timezone: 'local'                   // Set timezone
   }
 }
 
-// 處理日期欄位
+// Handle date fields
 await userRepo.insert({
   name: 'Test User',
-  birth_date: '1990-01-01',           // DATE 欄位
-  created_at: new Date(),             // DATETIME 欄位
-  updated_at: new Date().toISOString() // ISO 格式
+  birth_date: '1990-01-01',           // DATE field
+  created_at: new Date(),             // DATETIME field
+  updated_at: new Date().toISOString() // ISO format
 });
 ```
 
-### 多語句查詢
+### Multiple Statement Queries
 
 ```typescript
-// 啟用多語句查詢（謹慎使用）
+// Enable multiple statements (use with caution)
 mysql: {
   type: 'mysql',
   options: {
     host: 'localhost',
-    // ... 其他設定
-    multipleStatements: true  // 啟用多語句
+    // ... other settings
+    multipleStatements: true  // Enable multiple statements
   }
 }
 ```
 
-## 錯誤處理
+## Error Handling
 
-MySQL Provider 提供詳細的錯誤資訊：
+MySQL Provider provides detailed error information:
 
 ```typescript
 try {
   const result = await userRepo.insert({ name: 'Test User' });
 } catch (error) {
-  console.error('插入失敗:', error.message);
+  console.error('Insert failed:', error.message);
 
   if (error.code) {
     switch (error.code) {
       case 'ER_DUP_ENTRY':
-        console.error('資料重複，請檢查唯一性約束');
+        console.error('Duplicate entry, check unique constraints');
         break;
       case 'ER_NO_SUCH_TABLE':
-        console.error('表格不存在');
+        console.error('Table does not exist');
         break;
       case 'ER_ACCESS_DENIED_ERROR':
-        console.error('存取被拒絕，請檢查使用者權限');
+        console.error('Access denied, check user permissions');
         break;
       case 'ECONNREFUSED':
-        console.error('連線被拒絕，請檢查 MySQL 伺服器是否運行');
+        console.error('Connection refused, check if MySQL server is running');
         break;
       case 'ER_BAD_DB_ERROR':
-        console.error('資料庫不存在');
+        console.error('Database does not exist');
         break;
       default:
-        console.error('未知錯誤:', error.code, error.message);
+        console.error('Unknown error:', error.code, error.message);
     }
   }
 }
 ```
 
-常見錯誤代碼：
-- `ER_DUP_ENTRY`: 重複鍵值
-- `ER_NO_SUCH_TABLE`: 表格不存在
-- `ER_ACCESS_DENIED_ERROR`: 存取拒絕
-- `ER_BAD_DB_ERROR`: 資料庫不存在
-- `ECONNREFUSED`: 連線被拒絕
-- `PROTOCOL_CONNECTION_LOST`: 連線中斷
+Common error codes:
+- `ER_DUP_ENTRY`: Duplicate key value
+- `ER_NO_SUCH_TABLE`: Table does not exist
+- `ER_ACCESS_DENIED_ERROR`: Access denied
+- `ER_BAD_DB_ERROR`: Database does not exist
+- `ECONNREFUSED`: Connection refused
+- `PROTOCOL_CONNECTION_LOST`: Connection lost
 
-## 效能優化
+## Performance Optimization
 
-### 連線池調校
+### Connection Pool Tuning
 
 ```typescript
-// 高流量生產環境
+// High-traffic production environment
 pool: {
   usePool: true,
-  connectionLimit: 50,        // 根據伺服器容量調整
-  queueLimit: 200,           // 防止無限排隊
-  acquireTimeout: 30000,     // 30 秒連線超時
-  timeout: 300000,           // 5 分鐘閒置超時
-  preConnect: true           // 啟動時預先建立連線
+  connectionLimit: 50,        // Adjust based on server capacity
+  queueLimit: 200,           // Prevent infinite queuing
+  acquireTimeout: 30000,     // 30 second connection timeout
+  timeout: 300000,           // 5 minute idle timeout
+  preConnect: true           // Pre-establish connections on startup
 }
 
-// 中等流量環境
+// Medium traffic environment
 pool: {
   usePool: true,
   connectionLimit: 20,
@@ -624,7 +624,7 @@ pool: {
   preConnect: false
 }
 
-// 低流量或開發環境
+// Low traffic or development environment
 pool: {
   usePool: true,
   connectionLimit: 5,
@@ -633,52 +633,52 @@ pool: {
 }
 ```
 
-### 查詢優化
+### Query Optimization
 
 ```typescript
-// 使用索引欄位
+// Use indexed fields
 const users = await userRepo.findMany({
-  field: 'email',  // 確保 email 欄位有索引
+  field: 'email',  // Ensure email field is indexed
   op: '=',
   value: 'user@example.com'
 });
 
-// 限制結果數量
+// Limit result count
 const recentUsers = await userRepo.find({
   orderBy: [{ field: 'created_at', direction: 'DESC' }],
-  limit: 100  // 限制結果
+  limit: 100  // Limit results
 });
 
-// 只查詢需要的欄位
+// Query only needed fields
 const userList = await userRepo.find({
-  fields: ['id', 'name', 'email'],  // 只查詢必要欄位
+  fields: ['id', 'name', 'email'],  // Only query necessary fields
   where: { field: 'status', op: '=', value: 'active' }
 });
 
-// 批次操作
+// Batch operations
 const userIds = [1, 2, 3, 4, 5];
 const users = await userRepo.findMany({
   field: 'id',
   op: 'IN',
-  values: userIds  // 一次查詢多筆
+  values: userIds  // Query multiple records at once
 });
 ```
 
-## 安全性考量
+## Security Considerations
 
-### 參數化查詢
+### Parameterized Queries
 
-MySQL Provider 自動使用參數化查詢防止 SQL 注入：
+MySQL Provider automatically uses parameterized queries to prevent SQL injection:
 
 ```typescript
-// 安全查詢（自動參數化）
+// Safe query (automatically parameterized)
 const user = await userRepo.findOne({
   field: 'email',
   op: '=',
-  value: userInput  // 自動轉義，防止 SQL 注入
+  value: userInput  // Automatically escaped, prevents SQL injection
 });
 
-// 複雜條件也會自動參數化
+// Complex conditions are also automatically parameterized
 const users = await userRepo.find({
   where: {
     and: [
@@ -690,10 +690,10 @@ const users = await userRepo.find({
 });
 ```
 
-### SSL 連線
+### SSL Connection
 
 ```typescript
-// SSL 連線設定
+// SSL connection configuration
 mysql: {
   type: 'mysql',
   options: {
@@ -711,21 +711,21 @@ mysql: {
   }
 }
 
-// 或使用簡化的 SSL 設定
+// Or use simplified SSL configuration
 mysql: {
   type: 'mysql',
   options: {
     host: 'secure-db.example.com',
-    // ... 其他設定
-    ssl: 'Amazon RDS'  // 預設的 SSL 設定
+    // ... other settings
+    ssl: 'Amazon RDS'  // Default SSL configuration
   }
 }
 ```
 
-### 連線安全
+### Connection Security
 
 ```typescript
-// 安全的連線設定
+// Secure connection configuration
 mysql: {
   type: 'mysql',
   options: {
@@ -734,9 +734,9 @@ mysql: {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    charset: 'utf8mb4',              // 支援完整的 UTF-8
-    timezone: 'Z',                   // 使用 UTC 時區
-    multipleStatements: false,       // 禁用多語句（安全考量）
+    charset: 'utf8mb4',              // Support full UTF-8
+    timezone: 'Z',                   // Use UTC timezone
+    multipleStatements: false,       // Disable multiple statements (security)
     ssl: process.env.NODE_ENV === 'production' ? {
       rejectUnauthorized: true
     } : false
@@ -744,15 +744,15 @@ mysql: {
 }
 ```
 
-## 高可用性設定
+## High Availability Setup
 
-### 讀寫分離
+### Read-Write Separation
 
 ```typescript
-// 主從分離設定範例
+// Master-slave separation example
 const config = {
   providers: {
-    // 主資料庫（寫入）
+    // Master database (writes)
     mysqlMaster: {
       type: 'mysql',
       options: {
@@ -766,7 +766,7 @@ const config = {
       }
     },
 
-    // 從資料庫（讀取）
+    // Slave database (reads)
     mysqlSlave: {
       type: 'mysql',
       options: {
@@ -775,53 +775,53 @@ const config = {
         password: process.env.SLAVE_DB_PASSWORD,
         database: 'app_db',
         pool: {
-          connectionLimit: 20  // 讀取通常更多
+          connectionLimit: 20  // Usually more for reads
         }
       }
     }
   },
 
   repositories: {
-    // 寫入操作使用主資料庫
+    // Write operations use master database
     usersWrite: { provider: 'mysqlMaster', table: 'users' },
-    // 讀取操作使用從資料庫
+    // Read operations use slave database
     usersRead: { provider: 'mysqlSlave', table: 'users' }
   }
 };
 
-// 使用範例
+// Usage example
 const writeRepo = gateway.getRepository('usersWrite');
 const readRepo = gateway.getRepository('usersRead');
 
-// 寫入操作
+// Write operation
 await writeRepo.insert({ name: 'New User', email: 'new@example.com' });
 
-// 讀取操作
+// Read operation
 const users = await readRepo.findMany();
 ```
 
-### 連線重試
+### Connection Retry
 
 ```typescript
-// 帶重試機制的連線設定
+// Connection configuration with retry mechanism
 mysql: {
   type: 'mysql',
   options: {
     host: 'db.example.com',
-    // ... 其他設定
-    reconnect: true,           // 啟用自動重連
+    // ... other settings
+    reconnect: true,           // Enable auto-reconnect
     pool: {
       usePool: true,
       connectionLimit: 10,
-      acquireTimeout: 30000,   // 連線取得超時
-      timeout: 600000,         // 閒置超時
-      preConnect: true         // 預先測試連線
+      acquireTimeout: 30000,   // Connection acquire timeout
+      timeout: 600000,         // Idle timeout
+      preConnect: true         // Pre-test connections
     }
   }
 }
 ```
 
-## 完整範例
+## Complete Example
 
 ```typescript
 import { DataGateway, MySQLProviderOptions } from '@wfp99/data-gateway';
@@ -866,7 +866,7 @@ async function mysqlExample() {
     const userRepo = gateway.getRepository('users');
     const orderRepo = gateway.getRepository('orders');
 
-    // 建立使用者
+    // Create user
     const userId = await userRepo?.insert({
       name: 'Alice Wang',
       email: 'alice@example.com',
@@ -876,9 +876,9 @@ async function mysqlExample() {
       created_at: new Date()
     });
 
-    console.log(`新使用者 ID: ${userId}`);
+    console.log(`New user ID: ${userId}`);
 
-    // 複雜查詢
+    // Complex query
     const engineeringUsers = await userRepo?.find({
       fields: ['id', 'name', 'email', 'salary'],
       where: {
@@ -892,9 +892,9 @@ async function mysqlExample() {
       limit: 10
     });
 
-    console.log('工程部門高薪使用者:', engineeringUsers?.rows);
+    console.log('High-paid Engineering users:', engineeringUsers?.rows);
 
-    // 聚合查詢
+    // Aggregate query
     const departmentStats = await userRepo?.find({
       fields: [
         'department',
@@ -911,16 +911,16 @@ async function mysqlExample() {
       orderBy: [{ field: 'avg_salary', direction: 'DESC' }]
     });
 
-    console.log('部門統計:', departmentStats?.rows);
+    console.log('Department statistics:', departmentStats?.rows);
 
-    // 監控連線池
+    // Monitor connection pool
     const poolStatus = gateway.getProviderPoolStatus('mysql');
     if (poolStatus) {
-      console.log(`MySQL 連線池狀態: ${poolStatus.activeConnections}/${poolStatus.maxConnections} 使用中`);
+      console.log(`MySQL connection pool status: ${poolStatus.activeConnections}/${poolStatus.maxConnections} active`);
     }
 
   } catch (error) {
-    console.error('MySQL 操作錯誤:', error);
+    console.error('MySQL operation error:', error);
   } finally {
     await gateway.disconnectAll();
   }
@@ -929,9 +929,9 @@ async function mysqlExample() {
 mysqlExample().catch(console.error);
 ```
 
-## 相關連結
+## Related Links
 
-- [MySQL 官方文件](https://dev.mysql.com/doc/)
-- [mysql2 套件文件](https://github.com/sidorares/node-mysql2)
-- [DataGateway API 文件](../api/data-gateway.md)
-- [連線池管理指南](../advanced/connection-pooling.md)
+- [MySQL Official Documentation](https://dev.mysql.com/doc/)
+- [mysql2 Package Documentation](https://github.com/sidorares/node-mysql2)
+- [DataGateway API Documentation](../api/data-gateway.md)
+- [Connection Pooling Guide](../advanced/connection-pooling.md)

@@ -3,5 +3,5 @@ dist/
 .env
 coverage/
 test.db
-docs/development/
+dev-history/
 .DS_Store

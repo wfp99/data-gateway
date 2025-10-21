@@ -1,22 +1,22 @@
-# Quick Start Guide
+# 快速入門指南
 
-Get started with Data Gateway in 5 minutes!
+5 分鐘快速上手 Data Gateway！
 
-## Installation
+## 安裝
 
 ```bash
-# Install Data Gateway
+# 安裝 Data Gateway
 npm install @wfp99/data-gateway
 
-# Install database drivers (choose what you need)
+# 安裝資料庫驅動程式（選擇您需要的）
 npm install mysql2              # MySQL/MariaDB
 npm install pg @types/pg        # PostgreSQL
 npm install sqlite3             # SQLite
 ```
 
-## Basic Configuration
+## 基本設定
 
-Create `app.ts`:
+建立 `app.ts`：
 
 ```typescript
 import { DataGateway, MySQLProviderOptions } from '@wfp99/data-gateway';
@@ -41,9 +41,9 @@ const config = {
 export default config;
 ```
 
-> **Pool Configuration**: Connection pooling is enabled by default. See [Connection Pooling Guide](../advanced/connection-pooling.md) for custom settings.
+> **連線池設定**：連線池預設已啟用。詳細設定請參考 [連線池管理指南](../advanced/connection-pooling.zh-TW.md)。
 
-## Usage Example
+## 使用範例
 
 ```typescript
 async function main() {
@@ -51,27 +51,27 @@ async function main() {
   const userRepo = gateway.getRepository('users');
 
   if (userRepo) {
-    // Create
+    // 建立
     const newId = await userRepo.insert({
       name: 'John Doe',
       email: 'john@example.com',
       status: 'active'
     });
 
-    // Query with conditions
+    // 條件查詢
     const activeUsers = await userRepo.find({
       where: { field: 'status', op: '=', value: 'active' },
       orderBy: [{ field: 'name', direction: 'ASC' }],
       limit: 10
     });
 
-    // Update
+    // 更新
     await userRepo.update(
       { status: 'inactive' },
       { field: 'id', op: '=', value: newId }
     );
 
-    // Delete
+    // 刪除
     await userRepo.delete({ field: 'id', op: '=', value: newId });
   }
 
@@ -81,7 +81,7 @@ async function main() {
 main().catch(console.error);
 ```
 
-## Multi-Provider Setup
+## 多資料來源設定
 
 ```typescript
 import {
@@ -127,27 +127,27 @@ const multiConfig = {
 };
 ```
 
-## Error Handling
+## 錯誤處理
 
 ```typescript
 try {
   const gateway = await DataGateway.build(config);
   const result = await gateway.getRepository('users')?.insert({ name: 'Test' });
-  console.log('Success:', result);
+  console.log('成功:', result);
 } catch (error) {
   if (error instanceof Error) {
     if (error.message.includes('connection')) {
-      console.error('Database connection failed');
+      console.error('資料庫連線失敗');
     } else if (error.message.includes('Provider')) {
-      console.error('Driver not installed');
+      console.error('驅動程式未安裝');
     }
   }
 }
 ```
 
-## Next Steps
+## 下一步
 
-- 📖 [Basic Usage Guide](./basic-usage.md) - Complete feature overview
-- 🔧 [Provider Guides](../providers/) - Database-specific configurations
-- ⚡ [Connection Pooling](../advanced/connection-pooling.md) - Performance optimization
-- 🏗️ [Architecture](../core/architecture.md) - Design and concepts
+- 📖 [基本使用指南](./basic-usage.zh-TW.md) - 完整功能說明
+- 🔧 [Provider 指南](../providers/) - 各資料庫專屬設定
+- ⚡ [連線池管理](../advanced/connection-pooling.zh-TW.md) - 效能優化
+- 🏗️ [架構設計](../core/architecture.zh-TW.md) - 設計概念

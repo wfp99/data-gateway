@@ -1,25 +1,25 @@
-# Date Handling Guide
+# 日期處理指南
 
-Data Gateway automatically handles Date object conversions across different databases.
+Data Gateway 自動處理不同資料庫的 Date 物件轉換。
 
-## Provider-Specific Handling
+## Provider 專屬處理
 
 ### MySQL & PostgreSQL
 
-Both providers natively support Date objects through their drivers (`mysql2` and `pg`):
+兩者都透過驅動程式（`mysql2` 和 `pg`）原生支援 Date 物件：
 
-**Automatic Conversion**:
-- **Write**: Date objects → DATETIME/TIMESTAMP
-- **Read**: DATETIME/TIMESTAMP → Date objects
+**自動轉換**：
+- **寫入**: Date 物件 → DATETIME/TIMESTAMP
+- **讀取**: DATETIME/TIMESTAMP → Date 物件
 
 ```typescript
-// Insert with Date
+// 插入 Date
 await userRepo.insert({
   name: 'John Doe',
   createdAt: new Date('2024-01-15T10:30:00.000Z')
 });
 
-// Query with Date (results are Date objects)
+// 查詢 Date（結果為 Date 物件）
 const users = await userRepo.find({
   field: 'createdAt',
   op: '>',
@@ -29,15 +29,15 @@ const users = await userRepo.find({
 
 ### SQLite
 
-SQLite doesn't have native Date type, so we implement automatic conversion:
+SQLite 沒有原生 Date 類型，我們實作自動轉換：
 
-**Automatic Conversion**:
-- **Write**: Date objects → ISO 8601 strings (`2024-01-15T10:30:00.000Z`)
-- **Read**: ISO 8601 strings → Date objects
+**自動轉換**：
+- **寫入**: Date 物件 → ISO 8601 字串（`2024-01-15T10:30:00.000Z`）
+- **讀取**: ISO 8601 字串 → Date 物件
 
 ```typescript
 await logRepo.insert({
-  message: 'System started',
+  message: '系統啟動',
   timestamp: new Date()
 });
 
@@ -48,24 +48,24 @@ const logs = await logRepo.find({
 });
 ```
 
-**Important**: Only ISO 8601 format strings are converted. Other formats remain as strings.
+**重要**：僅轉換 ISO 8601 格式字串，其他格式保持為字串。
 
 ### Remote Provider
 
-Uses type markers for JSON transmission:
+使用類型標記進行 JSON 傳輸：
 
-**Format**:
+**格式**：
 ```json
 { "__type": "Date", "__value": "2024-01-15T10:30:00.000Z" }
 ```
 
 ```typescript
 await remoteRepo.insert({
-  title: 'Remote Event',
+  title: '遠端事件',
   eventDate: new Date('2024-12-25')
 });
 
-// Dates are automatically restored
+// 日期自動還原
 const events = await remoteRepo.find({
   field: 'eventDate',
   op: 'IN',
@@ -73,35 +73,35 @@ const events = await remoteRepo.find({
 });
 ```
 
-## Usage Examples
+## 使用範例
 
-### Basic CRUD
+### 基本 CRUD
 
 ```typescript
 const eventRepo = gateway.getRepository<Event>('event');
 
-// Create
+// 建立
 await eventRepo.insert({
-  title: 'Product Launch',
+  title: '產品發表',
   eventDate: new Date('2024-12-31T23:59:59.000Z'),
   createdAt: new Date()
 });
 
-// Query
+// 查詢
 const upcoming = await eventRepo.find({
   field: 'eventDate',
   op: '>',
   value: new Date()
 });
 
-// Update
+// 更新
 await eventRepo.update(
   { eventDate: new Date('2025-01-01') },
   { field: 'id', op: '=', value: 1 }
 );
 ```
 
-### Date Range Query
+### 日期範圍查詢
 
 ```typescript
 const events = await eventRepo.find({
@@ -112,7 +112,7 @@ const events = await eventRepo.find({
 });
 ```
 
-### With Field Mapping
+### 搭配欄位對應
 
 ```typescript
 interface Event {
@@ -136,31 +136,31 @@ const gateway = await DataGateway.build({
   }
 });
 
-// Dates auto-convert and field names are mapped
+// 日期自動轉換且欄位名稱已對應
 await eventRepo.insert({
-  title: 'Meeting',
+  title: '會議',
   eventDate: new Date(),  // → event_date
   createdAt: new Date()   // → created_at
 });
 ```
 
-## Best Practices
+## 最佳實務
 
-### 1. Always Use UTC
+### 1. 統一使用 UTC
 
 ```typescript
-// Good ✓
+// 推薦 ✓
 const event = {
   eventDate: new Date('2024-12-25T10:00:00.000Z')
 };
 
-// Avoid ⚠️
+// 避免 ⚠️
 const event = {
-  eventDate: new Date('2024-12-25T10:00:00')  // Local time
+  eventDate: new Date('2024-12-25T10:00:00')  // 本地時間
 };
 ```
 
-### 2. Validate Dates
+### 2. 驗證日期
 
 ```typescript
 function isValidDate(date: any): date is Date {
@@ -169,24 +169,24 @@ function isValidDate(date: any): date is Date {
 
 const eventDate = new Date(userInput);
 if (isValidDate(eventDate)) {
-  await eventRepo.insert({ title: 'Event', eventDate });
+  await eventRepo.insert({ title: '事件', eventDate });
 } else {
-  throw new Error('Invalid date');
+  throw new Error('無效日期');
 }
 ```
 
-### 3. Handle Timezones in UI
+### 3. 在 UI 層處理時區
 
-Keep UTC in database, convert in UI:
+資料庫保持 UTC，UI 層轉換：
 
 ```typescript
-// Data layer: UTC
+// 資料層：UTC
 const events = await eventRepo.findAll();
 
-// UI layer: User timezone
+// UI 層：使用者時區
 events.forEach(event => {
-  console.log(event.eventDate.toLocaleString('en-US', {
-    timeZone: 'America/New_York'
+  console.log(event.eventDate.toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei'
   }));
 });
 ```
@@ -194,53 +194,53 @@ events.forEach(event => {
 ### 4. SQLite Schema
 
 ```sql
--- Use TEXT for ISO 8601 strings
+-- 使用 TEXT 儲存 ISO 8601 字串
 CREATE TABLE events (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
-  event_date TEXT NOT NULL,  -- ISO 8601 format
+  event_date TEXT NOT NULL,  -- ISO 8601 格式
   created_at TEXT NOT NULL
 );
 ```
 
-### 5. Create Indexes
+### 5. 建立索引
 
 ```sql
 -- MySQL/PostgreSQL/SQLite
 CREATE INDEX idx_event_date ON events(event_date);
 ```
 
-## Troubleshooting
+## 疑難排解
 
-### SQLite Dates Not Converting
+### SQLite 日期未轉換
 
-**Cause**: Non-ISO 8601 format
+**原因**：非 ISO 8601 格式
 
-**Solution**: Use ISO 8601 format:
+**解決方案**：使用 ISO 8601 格式：
 
 ```typescript
-// Correct ✓
+// 正確 ✓
 new Date().toISOString() // "2024-01-15T10:30:00.000Z"
 
-// Won't convert ✗
+// 不會轉換 ✗
 "2024-01-15 10:30:00"
 "01/15/2024"
 ```
 
-### Remote API Date Loss
+### 遠端 API 日期遺失
 
-**Cause**: API doesn't handle type markers
+**原因**：API 未處理類型標記
 
-**Solution**: Ensure remote API uses same serialization or handle manually
+**解決方案**：確保遠端 API 使用相同序列化或手動處理
 
-### Timezone Inconsistencies
+### 時區不一致
 
-**Solutions**:
-1. Use UTC consistently
-2. Use TIMESTAMP WITH TIME ZONE (PostgreSQL)
-3. Handle conversions explicitly in application
+**解決方案**：
+1. 統一使用 UTC
+2. 使用 TIMESTAMP WITH TIME ZONE（PostgreSQL）
+3. 在應用層明確處理轉換
 
-## Resources
+## 資源
 
 - [MySQL DATETIME](https://dev.mysql.com/doc/refman/8.0/en/datetime.html)
 - [PostgreSQL Date/Time](https://www.postgresql.org/docs/current/datatype-datetime.html)

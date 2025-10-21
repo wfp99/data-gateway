@@ -1,100 +1,102 @@
-# 更新日誌 - 2025 年 10 月版本 🎉
+# Changelog - October 2025 Release 🎉
 
-> **完整文件**: 詳細的實作說明、使用範例和 API 文件請參閱 [docs/guides/type-safety-2025-10.md](./docs/guides/type-safety-2025-10.md)
+[English](./CHANGELOG-2025-10.md) | [繁體中文](./CHANGELOG-2025-10.zh-TW.md)
 
-## 快速概覽
+> **Full Documentation**: For detailed implementation, usage examples, and API documentation, please refer to [docs/guides/type-safety-2025-10.md](./docs/guides/type-safety-2025-10.md)
 
-**發布日期**: 2025-10-20
-**狀態**: ✅ 完成
-**測試通過率**: 100% (262/262 測試)
+## Quick Overview
 
-本次更新成功實作了三個型別安全改進功能，並修復了一個重要的 SQL 欄位轉義問題：
+**Release Date**: 2025-10-20
+**Status**: ✅ Completed
+**Test Pass Rate**: 100% (262/262 tests)
 
-### 實作功能摘要
+This update successfully implements three type safety enhancement features and fixes a critical SQL field escaping issue:
 
-#### 1. FieldReference 型別系統 ✅
-- 型別安全的欄位引用: `string | { table?, repository?, field }`
-- 輔助函數: `tableField()`, `repoField()`, `fieldRefToString()`
-- **6 個測試** 全部通過
+### Implemented Features Summary
 
-#### 2. QueryBuilder 模式 ✅
-- 流暢的鏈式 API 建構查詢
-- 完整的 TypeScript 支援
-- 支援 SELECT/INSERT/UPDATE/DELETE 和所有 SQL 功能
-- **54 個測試** 全部通過
+#### 1. FieldReference Type System ✅
+- Type-safe field references: `string | { table?, repository?, field }`
+- Helper functions: `tableField()`, `repoField()`, `fieldRefToString()`
+- **6 tests** all passed
 
-#### 3. 欄位衝突檢測 ✅
-- 自動偵測 JOIN 查詢中的欄位名稱衝突
-- 智慧警告系統（只在需要時觸發）
-- **8 個測試** 全部通過
+#### 2. QueryBuilder Pattern ✅
+- Fluent chaining API for query construction
+- Full TypeScript support
+- Supports SELECT/INSERT/UPDATE/DELETE and all SQL features
+- **54 tests** all passed
 
-### 🐛 錯誤修復
+#### 3. Field Conflict Detection ✅
+- Automatically detects field name conflicts in JOIN queries
+- Smart warning system (only triggers when needed)
+- **8 tests** all passed
 
-#### 4. Table.Field 格式 SQL 轉義修復 ✅
-- **問題**: 使用 `table.field` 格式（如 `users.id`）時，整個字串被當作單一欄位名稱加上引號
-- **影響**: MySQL、PostgreSQL、SQLite 所有 Provider
-- **修復**: 新增 `escapeIdentifier` 方法，正確處理表格與欄位的分別引用
-- **結果**:
+### 🐛 Bug Fixes
+
+#### 4. Table.Field Format SQL Escaping Fix ✅
+- **Issue**: When using `table.field` format (e.g., `users.id`), the entire string was treated as a single field name with quotes
+- **Impact**: All Providers (MySQL, PostgreSQL, SQLite)
+- **Fix**: Added `escapeIdentifier` method to properly handle separate quoting for table and field names
+- **Results**:
   - MySQL: `` `users.id` `` → `` `users`.`id` `` ✅
   - PostgreSQL/SQLite: `"users.id"` → `"users"."id"` ✅
-- **測試**: 新增 **11 個專門測試**，涵蓋所有 SQL 操作
-- **向下兼容**: 不影響現有單一欄位名稱的使用
+- **Testing**: Added **11 dedicated tests** covering all SQL operations
+- **Backward Compatible**: Does not affect existing single field name usage
 
-#### 5. JOIN 查詢欄位映射修復 ✅
-- **問題**: 使用 `table.field` 或 `repository.field` 格式的 JOIN 查詢成功執行，但對應欄位的值會變成 `null`
-- **影響**: 所有使用 JOIN 的查詢，特別是多表查詢場景
-- **修復歷程**:
-  1. **第一次修復**: 當找不到對應 mapper 時，保留原始欄位名稱和值
-  2. **第二次修復**: 區分主表和 JOIN 表格欄位，主表欄位不加表格前綴
-  3. **第三次優化**: 使用 repository 名稱而非 table 名稱作為欄位前綴
-- **結果**:
+#### 5. JOIN Query Field Mapping Fix ✅
+- **Issue**: JOIN queries using `table.field` or `repository.field` format executed successfully but returned `null` values for mapped fields
+- **Impact**: All queries using JOINs, especially multi-table query scenarios
+- **Fix History**:
+  1. **First Fix**: Preserve original field names and values when mapper not found
+  2. **Second Fix**: Distinguish between main table and JOIN table fields; main table fields don't have table prefix
+  3. **Third Optimization**: Use repository name instead of table name as field prefix
+- **Results**:
   ```typescript
-  // 修復前
-  { userId: 1, userName: 'John', 'orders.orderId': null }  // ❌ null 值
+  // Before fix
+  { userId: 1, userName: 'John', 'orders.orderId': null }  // ❌ null value
 
-  // 修復後
-  { userId: 1, userName: 'John', 'orders.orderId': 101 }   // ✅ 正確值
+  // After fix
+  { userId: 1, userName: 'John', 'orders.orderId': 101 }   // ✅ correct value
   ```
-- **關鍵改進**:
-  - 主表欄位：不含表格前綴（`userId` 而非 `users.userId`）
-  - JOIN 表格欄位：使用 repository 名稱作為前綴（repository 引用時）
-  - 直接 table 引用：使用 table 名稱作為前綴
-  - 提升 API 一致性和可讀性
-- **測試**: 新增 **8 個專門測試**，涵蓋各種 JOIN 場景
-- **文檔**: [docs/development/BUGFIX-TABLE-FIELD-MAPPING-2025-10.md](./docs/development/BUGFIX-TABLE-FIELD-MAPPING-2025-10.md)
-- **向下兼容**: ✅ 完全向下相容，所有現有測試通過
+- **Key Improvements**:
+  - Main table fields: no table prefix (`userId` instead of `users.userId`)
+  - JOIN table fields: use repository name as prefix (when using repository reference)
+  - Direct table reference: use table name as prefix
+  - Improved API consistency and readability
+- **Testing**: Added **8 dedicated tests** covering various JOIN scenarios
+- **Documentation**: [docs/development/BUGFIX-TABLE-FIELD-MAPPING-2025-10.md](./docs/development/BUGFIX-TABLE-FIELD-MAPPING-2025-10.md)
+- **Backward Compatible**: ✅ Fully backward compatible, all existing tests pass
 
-## 測試統計
+## Test Statistics
 
 ```
-總測試數: 270 個測試 (100% 通過)
-├─ 本次新增: 87 個測試
-│  ├─ FieldReference:          6 個 ✅
-│  ├─ QueryBuilder:           54 個 ✅
-│  ├─ Field Conflict:          8 個 ✅
-│  ├─ Field Escaping:         11 個 ✅
-│  └─ JOIN Field Mapping:      8 個 ✅ (新增)
-└─ 現有功能: 183 個測試 ✅
+Total Tests: 270 tests (100% passed)
+├─ New in This Release: 87 tests
+│  ├─ FieldReference:          6 ✅
+│  ├─ QueryBuilder:           54 ✅
+│  ├─ Field Conflict:          8 ✅
+│  ├─ Field Escaping:         11 ✅
+│  └─ JOIN Field Mapping:      8 ✅ (New)
+└─ Existing Features: 183 tests ✅
 
-執行時間: ~980ms
+Execution Time: ~980ms
 ```
 
-## 快速範例
+## Quick Examples
 
-### FieldReference 型別安全
+### FieldReference Type Safety
 ```typescript
 import { tableField, repoField } from '@wfp99/data-gateway';
 
-// 型別安全的欄位引用
+// Type-safe field references
 await userRepo.find({
   fields: [
-    tableField('users', 'id'),      // IDE 自動完成
-    repoField('user', 'userName')   // 自動映射
+    tableField('users', 'id'),      // IDE auto-completion
+    repoField('user', 'userName')   // Auto-mapping
   ]
 });
 ```
 
-### QueryBuilder 流暢 API
+### QueryBuilder Fluent API
 ```typescript
 import { QueryBuilder } from '@wfp99/data-gateway';
 
@@ -109,117 +111,117 @@ const query = new QueryBuilder('users')
   .build();
 ```
 
-### 欄位衝突自動檢測
+### Automatic Field Conflict Detection
 ```typescript
-// 觸發警告
+// Triggers warning
 await userRepo.find({
-  fields: ['id'],  // 'id' 未加前綴
+  fields: ['id'],  // 'id' without prefix
   joins: [{ type: 'LEFT', source: { repository: 'posts' }, ... }]
 });
 // ⚠️ Warning: Field 'id' exists in multiple tables...
 ```
 
-### Table.Field 格式正確轉義
+### Table.Field Format Proper Escaping
 ```typescript
-// 現在可以正確使用 table.field 格式
+// Now correctly handles table.field format
 await userRepo.find({
   fields: [
-    'users.id',        // ✅ 轉換為 `users`.`id`
-    'users.name',      // ✅ 轉換為 `users`.`name`
-    'posts.title'      // ✅ 轉換為 `posts`.`title`
+    'users.id',        // ✅ Converts to `users`.`id`
+    'users.name',      // ✅ Converts to `users`.`name`
+    'posts.title'      // ✅ Converts to `posts`.`title`
   ],
   where: {
-    field: 'users.status',  // ✅ 正確處理
+    field: 'users.status',  // ✅ Properly handled
     op: '=',
     value: 'active'
   },
   orderBy: [
-    { field: 'users.created_at', direction: 'DESC' }  // ✅ 正確處理
+    { field: 'users.created_at', direction: 'DESC' }  // ✅ Properly handled
   ]
 });
 ```
 
-### JOIN 查詢欄位映射修復
+### JOIN Query Field Mapping Fix
 ```typescript
-// 使用 repository 引用的 JOIN 查詢
+// JOIN query using repository reference
 const userRepo = new Repository(gateway, provider, 'users', userMapper);
 const orderRepo = new Repository(gateway, provider, 'orders', orderMapper);
 
-// 現在可以正確獲取 JOIN 欄位的值
+// Now correctly retrieves JOIN field values
 const results = await userRepo.find({
   fields: ['userId', 'userName', 'orders.orderId', 'orders.amount'],
   joins: [{
     type: 'LEFT',
-    source: { repository: 'orders' },  // 使用 repository 引用
+    source: { repository: 'orders' },  // Using repository reference
     on: { field: 'userId', op: '=', value: 'orders.userId' }
   }]
 });
 
-// 結果格式
-// ✅ 修復前: { userId: 1, userName: 'John', 'orders.orderId': null }
-// ✅ 修復後: { userId: 1, userName: 'John', 'orders.orderId': 101, 'orders.amount': 500 }
+// Result format
+// ✅ Before fix: { userId: 1, userName: 'John', 'orders.orderId': null }
+// ✅ After fix: { userId: 1, userName: 'John', 'orders.orderId': 101, 'orders.amount': 500 }
 
-// 主表欄位不含前綴，JOIN 欄位使用 repository 名稱作為前綴
+// Main table fields have no prefix, JOIN fields use repository name as prefix
 ```
 
-## 影響與效益
+## Impact & Benefits
 
-### 開發體驗提升
-- ✅ **型別安全**: 從執行時錯誤 → 編譯時錯誤
-- ✅ **自動完成**: IDE 完整支援
-- ✅ **重構安全**: 型別系統追蹤所有引用
-- ✅ **主動警告**: 自動偵測潛在問題
+### Development Experience Improvements
+- ✅ **Type Safety**: From runtime errors → compile-time errors
+- ✅ **Auto-completion**: Full IDE support
+- ✅ **Refactoring Safety**: Type system tracks all references
+- ✅ **Proactive Warnings**: Automatically detects potential issues
 
-### 效能影響（極小）
-- 執行時開銷: < 2ms
-- 記憶體使用: < 3KB (暫時性)
-- 套件大小: +3.2KB (壓縮後)
+### Performance Impact (Minimal)
+- Runtime overhead: < 2ms
+- Memory usage: < 3KB (temporary)
+- Package size: +3.2KB (gzipped)
 
-### 向下相容性
-- ✅ 無破壞性變更
-- ✅ 字串格式仍然有效
-- ✅ 平滑升級路徑
+### Backward Compatibility
+- ✅ No breaking changes
+- ✅ String format still valid
+- ✅ Smooth upgrade path
 
-## 程式碼變更統計
+## Code Change Statistics
 
 ```
-新增檔案: 4 個
-├─ src/queryBuilder.ts (~400 行)
-├─ src/fieldConflictDetection.test.ts (~405 行)
-├─ src/dataProviders/fieldEscape.test.ts (~350 行)
-└─ src/repository-table-field-mapping.test.ts (~408 行) [新增]
+New Files: 4
+├─ src/queryBuilder.ts (~400 lines)
+├─ src/fieldConflictDetection.test.ts (~405 lines)
+├─ src/dataProviders/fieldEscape.test.ts (~350 lines)
+└─ src/repository-table-field-mapping.test.ts (~408 lines) [New]
 
-修改檔案: 7 個
-├─ src/queryObject.ts (+60 行)
-├─ src/repository.ts (+180 行, 包含 JOIN 映射優化)
-├─ src/index.ts (+5 行)
-├─ src/dataProviders/MySQLProvider.ts (+20 行)
-├─ src/dataProviders/PostgreSQLProvider.ts (+20 行)
-├─ src/dataProviders/SQLiteProvider.ts (+20 行)
-└─ src/repository.test.ts (更新測試期望值)
+Modified Files: 7
+├─ src/queryObject.ts (+60 lines)
+├─ src/repository.ts (+180 lines, includes JOIN mapping optimization)
+├─ src/index.ts (+5 lines)
+├─ src/dataProviders/MySQLProvider.ts (+20 lines)
+├─ src/dataProviders/PostgreSQLProvider.ts (+20 lines)
+├─ src/dataProviders/SQLiteProvider.ts (+20 lines)
+└─ src/repository.test.ts (updated test expectations)
 
-新增文檔: 1 個
+New Documentation: 1
 └─ docs/development/BUGFIX-TABLE-FIELD-MAPPING-2025-10.md
 
-新增程式碼: ~710 行
-新增測試: ~2,063 行
+New Code: ~710 lines
+New Tests: ~2,063 lines
 ```
 
-## 下一步
+## Next Steps
 
-### 待完成
-- [ ] 更新詳細使用指南 (`docs/guides/basic-usage.md`)
-- [ ] 完善 API 文件 (`docs/api/data-gateway.md`)
-- [ ] 新增 TypeDoc 註解
+### To Do
+- [ ] Update detailed usage guide (`docs/guides/basic-usage.md`)
+- [ ] Enhance API documentation (`docs/api/data-gateway.md`)
+- [ ] Add TypeDoc annotations
 
-### 未來規劃
-- 交易支援 (Transaction API)
-- 連線池管理介面
-- 資料庫遷移工具
-- 查詢快取機制
+### Future Plans
+- Transaction support (Transaction API)
+- Connection pool management interface
+- Database migration tools
+- Query caching mechanism
 
 ---
 
-**📖 完整文件**: [docs/guides/type-safety-2025-10.md](./docs/guides/type-safety-2025-10.md)
-**🧪 測試檔案**: [src/fieldConflictDetection.test.ts](./src/fieldConflictDetection.test.ts), [src/queryBuilder.test.ts](./src/queryBuilder.test.ts)
-**📦 最後更新**: 2025-10-20
+**📖 Full Documentation**: [docs/guides/type-safety-2025-10.en.md](./docs/guides/type-safety-2025-10.en.md)
+**🧪 Test Files**: [src/fieldConflictDetection.test.ts](./src/fieldConflictDetection.test.ts), [src/queryBuilder.test.ts](./src/queryBuilder.test.ts)
+**📦 Last Updated**: 2025-10-20

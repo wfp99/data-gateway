@@ -1,20 +1,20 @@
-# 連線池管理
+# Connection Pool Management
 
-Data Gateway 支援連線池功能，能有效提升效能和資源管理效率。對於需要處理大量資料庫操作的高流量應用程式特別有用。
+Data Gateway supports connection pooling functionality that effectively improves performance and resource management efficiency. This is especially useful for high-traffic applications that need to handle large volumes of database operations.
 
-## 概述
+## Overview
 
-連線池允許多個資料庫連線被重複使用於不同的查詢操作，減少建立和關閉連線的開銷。這對以下情況特別重要：
+Connection pools allow multiple database connections to be reused for different query operations, reducing the overhead of creating and closing connections. This is particularly important for:
 
-- 高併發應用程式
-- 頻繁進行資料庫操作的應用程式
-- 有效能要求的生產環境
+- High-concurrency applications
+- Applications with frequent database operations
+- Production environments with performance requirements
 
-## 支援的提供者
+## Supported Providers
 
 ### MySQL Provider
 
-MySQL 提供者使用 `mysql2` 連線池提供完整的連線池功能：
+The MySQL provider uses `mysql2` connection pools to provide full connection pooling functionality:
 
 ```typescript
 import { DataGateway, MySQLProviderOptions } from '@wfp99/data-gateway';
@@ -29,12 +29,12 @@ const config = {
         password: 'password',
         database: 'myapp',
         pool: {
-          usePool: true,              // 啟用連線池（預設：true）
-          connectionLimit: 10,        // 連線池最大連線數（預設：10）
-          queueLimit: 0,             // 最大排隊連線請求數（預設：0，無限制）
-          acquireTimeout: 60000,     // 取得連線超時時間（預設：60000ms）
-          timeout: 600000,           // 閒置連線超時時間（預設：600000ms）
-          preConnect: false,         // 啟動時測試連線池（預設：false）
+          usePool: true,              // Enable connection pool (default: true)
+          connectionLimit: 10,        // Maximum connections in pool (default: 10)
+          queueLimit: 0,             // Maximum queued connection requests (default: 0, unlimited)
+          acquireTimeout: 60000,     // Connection acquire timeout (default: 60000ms)
+          timeout: 600000,           // Idle connection timeout (default: 600000ms)
+          preConnect: false,         // Test connection pool on startup (default: false)
         }
       } as MySQLProviderOptions
     }
@@ -49,7 +49,7 @@ const gateway = await DataGateway.build(config);
 
 ### PostgreSQL Provider
 
-PostgreSQL 提供者使用 `pg` 連線池提供企業級連線池功能：
+PostgreSQL provider uses `pg` connection pools with comprehensive configuration options:
 
 ```typescript
 import { DataGateway, PostgreSQLProviderOptions } from '@wfp99/data-gateway';
@@ -65,18 +65,19 @@ const config = {
         database: 'myapp',
         port: 5432,
         pool: {
-          usePool: true,                    // 啟用連線池（預設：true）
-          max: 20,                         // 連線池最大連線數（預設：10）
-          min: 5,                          // 維持的最小連線數（預設：0）
-          idleTimeoutMillis: 30000,        // 閒置連線超時（預設：10000ms）
-          connectionTimeoutMillis: 60000,  // 連線取得超時（預設：30000ms）
-          allowExitOnIdle: false,          // 閒置時允許退出（預設：false）
+          usePool: true,              // Enable connection pool (default: true)
+          max: 20,                   // Maximum connections (default: 10)
+          min: 2,                    // Minimum connections (default: 0)
+          idleTimeoutMillis: 30000,  // Idle timeout (default: 30000ms)
+          connectionTimeoutMillis: 2000, // Connection timeout (default: 0, no timeout)
+          maxUses: 7500,            // Maximum uses per connection (default: Infinity)
+          allowExitOnIdle: false,   // Allow exit when all connections idle (default: false)
         }
       } as PostgreSQLProviderOptions
     }
   },
   repositories: {
-    order: { provider: 'postgresql', table: 'orders' }
+    user: { provider: 'postgresql', table: 'users' }
   }
 };
 
@@ -85,7 +86,7 @@ const gateway = await DataGateway.build(config);
 
 ### SQLite Provider
 
-SQLite 提供者支援基本的連線管理，針對讀取操作提供多個連線：
+SQLite provider supports read connection pools while using a single connection for writes:
 
 ```typescript
 import { DataGateway, SQLiteProviderOptions } from '@wfp99/data-gateway';
@@ -97,258 +98,469 @@ const config = {
       options: {
         filename: './database.db',
         pool: {
-          usePool: true,              // 啟用讀取連線池（預設：false）
-          maxReadConnections: 5,      // 最大唯讀連線數（預設：3）
-          enableWAL: true,           // 啟用 WAL 模式提升併發性（預設：啟用池時為 true）
+          usePool: true,              // Enable read connection pool (default: false)
+          readPoolSize: 3,           // Read connection pool size (default: 3)
+          writeConnection: 'single', // Write connection mode (only 'single' supported)
+          acquireTimeout: 30000,     // Connection acquire timeout (default: 30000ms)
+          idleTimeout: 300000,       // Idle connection timeout (default: 300000ms)
+          preConnect: false,         // Pre-establish connections on startup (default: false)
         }
       } as SQLiteProviderOptions
     }
   },
   repositories: {
-    log: { provider: 'sqlite', table: 'logs' }
+    user: { provider: 'sqlite', table: 'users' }
   }
 };
 
 const gateway = await DataGateway.build(config);
 ```
 
-**注意**: SQLite 對併發寫入有固有限制，因此 SQLite 提供者使用：
-- 一個主要連線處理所有寫入操作（INSERT、UPDATE、DELETE）
-- 多個唯讀連線處理 SELECT 操作（當啟用池時）
-- WAL（Write-Ahead Logging）模式提升併發性
+## Configuration Parameters
 
-### Remote Provider
+### Common Pool Parameters
 
-Remote 提供者透過 HTTP/HTTPS 操作，不支援連線池：
+All connection pool implementations support these common parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `usePool` | boolean | varies | Enable/disable connection pooling |
+| `acquireTimeout` | number | 30000-60000 | Timeout for acquiring connections (ms) |
+| `preConnect` | boolean | false | Pre-establish connections on startup |
+
+### MySQL-Specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `connectionLimit` | number | 10 | Maximum number of connections |
+| `queueLimit` | number | 0 | Maximum queued requests (0 = unlimited) |
+| `timeout` | number | 600000 | Idle connection timeout (ms) |
+
+### PostgreSQL-Specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max` | number | 10 | Maximum connections in pool |
+| `min` | number | 0 | Minimum connections maintained |
+| `idleTimeoutMillis` | number | 30000 | Idle connection timeout |
+| `connectionTimeoutMillis` | number | 0 | New connection timeout |
+| `maxUses` | number | Infinity | Maximum uses per connection |
+| `allowExitOnIdle` | boolean | false | Allow process exit when all idle |
+
+### SQLite-Specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `readPoolSize` | number | 3 | Number of read connections |
+| `writeConnection` | string | 'single' | Write connection mode |
+| `idleTimeout` | number | 300000 | Idle connection timeout |
+
+## Connection Pool Monitoring
+
+Data Gateway provides comprehensive connection pool monitoring capabilities:
+
+### Getting Pool Status
 
 ```typescript
-const remoteProvider = new RemoteProvider({
-  endpoint: 'https://api.example.com/data'
-});
-
-console.log(remoteProvider.supportsConnectionPooling()); // false
-```
-
-## 監控連線池狀態
-
-您可以監控連線池狀態來了解資源使用情況：
-
-```typescript
-// 取得特定提供者的連線池狀態
-const mysqlPoolStatus = gateway.getProviderPoolStatus('mysql');
-if (mysqlPoolStatus) {
-  console.log(`MySQL 連線池 - 總計: ${mysqlPoolStatus.totalConnections}, 使用中: ${mysqlPoolStatus.activeConnections}, 閒置: ${mysqlPoolStatus.idleConnections}`);
+// Get status for specific provider
+const mysqlStatus = gateway.getProviderPoolStatus('mysql');
+if (mysqlStatus) {
+  console.log('MySQL Pool Status:');
+  console.log(`  Total Connections: ${mysqlStatus.totalConnections}`);
+  console.log(`  Active Connections: ${mysqlStatus.activeConnections}`);
+  console.log(`  Idle Connections: ${mysqlStatus.idleConnections}`);
+  console.log(`  Max Connections: ${mysqlStatus.maxConnections}`);
 }
 
-// 取得所有提供者的連線池狀態
+// Get status for all providers
 const allStatuses = gateway.getAllPoolStatuses();
 for (const [providerName, status] of allStatuses) {
-  console.log(`${providerName}: ${status.activeConnections}/${status.maxConnections} 個連線使用中`);
-}
-
-// 檢查提供者是否支援連線池
-const provider = gateway.getProvider('mysql');
-if (provider?.supportsConnectionPooling?.()) {
-  console.log('提供者支援連線池');
+  console.log(`${providerName}: ${status.activeConnections}/${status.maxConnections} active`);
 }
 ```
 
-## 連線池狀態介面
-
-`ConnectionPoolStatus` 介面提供詳細的連線池狀態資訊：
+### Pool Status Interface
 
 ```typescript
 interface ConnectionPoolStatus {
-  totalConnections: number;    // 連線池中的總連線數
-  idleConnections: number;     // 閒置連線數
-  activeConnections: number;   // 使用中連線數
-  maxConnections: number;      // 最大允許連線數
-  minConnections?: number;     // 維持的最小閒置連線數
+  totalConnections: number;    // Current total connections
+  activeConnections: number;   // Currently active connections
+  idleConnections: number;     // Currently idle connections
+  maxConnections: number;      // Maximum allowed connections
 }
 ```
 
-## 最佳實務
-
-### MySQL 設定
-
-1. **連線限制**: 根據資料庫伺服器的 `max_connections` 設定和應用程式負載設定 `connectionLimit`
-2. **排隊限制**: 使用 `queueLimit` 防止無限制的連線請求排隊
-3. **超時設定**: 為應用程式需求設定適當的 `acquireTimeout` 和 `timeout` 值
-4. **預先連線**: 在生產環境啟用 `preConnect` 提早發現連線問題
+### Real-time Monitoring
 
 ```typescript
-// 生產環境設定範例
-pool: {
-  usePool: true,
-  connectionLimit: 20,        // 基於資料庫容量
-  queueLimit: 100,           // 防止記憶體問題
-  acquireTimeout: 30000,     // 30 秒
-  timeout: 300000,           // 5 分鐘閒置超時
-  preConnect: true,          // 啟動時測試
-}
-```
+// Set up periodic monitoring
+function setupPoolMonitoring(gateway: DataGateway) {
+  setInterval(() => {
+    const allStatuses = gateway.getAllPoolStatuses();
 
-### PostgreSQL 設定
+    for (const [providerName, status] of allStatuses) {
+      const utilizationRate = status.activeConnections / status.maxConnections;
 
-1. **連線數量**: 根據預期併發負載設定 `max` 和 `min`
-2. **超時管理**: 設定適當的 `idleTimeoutMillis` 和 `connectionTimeoutMillis`
-3. **資源效率**: 在低負載環境減少 `min` 值節省資源
+      // Log current status
+      console.log(`[${new Date().toISOString()}] ${providerName}:`);
+      console.log(`  Utilization: ${Math.round(utilizationRate * 100)}%`);
+      console.log(`  Connections: ${status.activeConnections}/${status.maxConnections}`);
 
-```typescript
-// 高併發設定範例
-pool: {
-  max: 50,                        // 增加最大連線數
-  min: 10,                        // 維持最小連線數
-  idleTimeoutMillis: 60000,       // 較長的閒置超時
-  connectionTimeoutMillis: 10000, // 較短的連線超時
-}
-
-// 低負載設定範例
-pool: {
-  max: 5,                         // 較少的最大連線數
-  min: 1,                         // 最小連線數
-  idleTimeoutMillis: 10000,       // 較短的閒置超時
-}
-```
-
-### SQLite 設定
-
-1. **讀取連線**: 根據預期併發讀取負載設定 `maxReadConnections`
-2. **WAL 模式**: 保持 `enableWAL: true` 以獲得更好的併發性
-3. **檔案位置**: 在生產環境使用絕對路徑
-
-```typescript
-// 生產環境設定範例
-pool: {
-  usePool: true,
-  maxReadConnections: 5,     // 基於讀取併發需求
-  enableWAL: true,          // 併發存取必備
-}
-```
-
-## 從單一連線遷移
-
-現有的無連線池設定的配置會繼續正常工作。要啟用連線池：
-
-### MySQL 遷移
-
-```typescript
-// 之前（單一連線）
-mysql: {
-  type: 'mysql',
-  options: {
-    host: 'localhost',
-    user: 'root',
-    database: 'myapp'
-  }
-}
-
-// 之後（含連線池）
-mysql: {
-  type: 'mysql',
-  options: {
-    host: 'localhost',
-    user: 'root',
-    database: 'myapp',
-    pool: {
-      usePool: true,
-      connectionLimit: 10
-    }
-  }
-}
-```
-
-### SQLite 遷移
-
-```typescript
-// 之前（單一連線）
-sqlite: {
-  type: 'sqlite',
-  options: {
-    filename: './database.db'
-  }
-}
-
-// 之後（含讀取連線池）
-sqlite: {
-  type: 'sqlite',
-  options: {
-    filename: './database.db',
-    pool: {
-      usePool: true,
-      maxReadConnections: 3
-    }
-  }
-}
-```
-
-## 錯誤處理
-
-連線池錯誤會被優雅地處理：
-
-- **連線池耗盡**: 請求會排隊至 `queueLimit`（MySQL）
-- **超時錯誤**: 當超過 `acquireTimeout` 時拋出
-- **連線失敗**: 個別連線失敗不會影響整個連線池
-- **優雅關閉**: `disconnectAll()` 會正確關閉所有池中連線
-
-## 效能考量
-
-- **連線池大小**: 從較小的連線池開始，基於監控結果增加
-- **監控**: 定期檢查連線池狀態確保最佳資源使用
-- **資源清理**: 應用程式關閉時總是呼叫 `disconnectAll()`
-
-```typescript
-// 優雅關閉範例
-process.on('SIGTERM', async () => {
-  await gateway.disconnectAll();
-  process.exit(0);
-});
-```
-
-## 進階連線池設定
-
-### 動態連線池調整
-
-```typescript
-// 根據時間動態調整連線池（範例概念）
-const isDaytime = new Date().getHours() > 8 && new Date().getHours() < 18;
-
-const config = {
-  providers: {
-    mysql: {
-      type: 'mysql',
-      options: {
-        // ... 其他設定
-        pool: {
-          usePool: true,
-          connectionLimit: isDaytime ? 20 : 5,  // 白天更多連線
-          timeout: isDaytime ? 30000 : 60000,   // 白天較短超時
-        }
+      // Warning for high utilization
+      if (utilizationRate > 0.8) {
+        console.warn(`⚠️  High utilization on ${providerName}: ${Math.round(utilizationRate * 100)}%`);
       }
+
+      // Alert for pool exhaustion
+      if (status.activeConnections === status.maxConnections) {
+        console.error(`🚨 Connection pool exhausted on ${providerName}!`);
+      }
+
+      // Info for low utilization (might indicate over-provisioning)
+      if (utilizationRate < 0.1 && status.maxConnections > 5) {
+        console.info(`ℹ️  Low utilization on ${providerName}: ${Math.round(utilizationRate * 100)}% (consider reducing pool size)`);
+      }
+    }
+  }, 30000); // Check every 30 seconds
+}
+
+// Usage
+const gateway = await DataGateway.build(config);
+setupPoolMonitoring(gateway);
+```
+
+## Performance Tuning
+
+### Environment-Based Configuration
+
+```typescript
+// Development environment
+const devPoolConfig = {
+  mysql: {
+    pool: {
+      usePool: true,
+      connectionLimit: 3,
+      acquireTimeout: 60000,
+      timeout: 600000,
+      preConnect: false
+    }
+  }
+};
+
+// Testing environment
+const testPoolConfig = {
+  mysql: {
+    pool: {
+      usePool: true,
+      connectionLimit: 5,
+      acquireTimeout: 30000,
+      timeout: 300000,
+      preConnect: false
+    }
+  }
+};
+
+// Production environment
+const prodPoolConfig = {
+  mysql: {
+    pool: {
+      usePool: true,
+      connectionLimit: 20,
+      queueLimit: 100,
+      acquireTimeout: 30000,
+      timeout: 300000,
+      preConnect: true
+    }
+  }
+};
+
+// Select configuration based on environment
+const poolConfig = process.env.NODE_ENV === 'production' ? prodPoolConfig :
+                  process.env.NODE_ENV === 'test' ? testPoolConfig : devPoolConfig;
+```
+
+### Load-Based Optimization
+
+```typescript
+// High-traffic API server
+const highTrafficConfig = {
+  mysql: {
+    pool: {
+      connectionLimit: 50,      // Large pool for high concurrency
+      queueLimit: 200,         // Allow queuing for burst traffic
+      acquireTimeout: 10000,   // Shorter timeout for fast failure
+      timeout: 180000,         // Shorter idle timeout
+      preConnect: true         // Pre-warm pool
+    }
+  }
+};
+
+// Batch processing application
+const batchProcessingConfig = {
+  mysql: {
+    pool: {
+      connectionLimit: 10,     // Smaller pool for controlled processing
+      queueLimit: 0,          // No queuing - immediate feedback
+      acquireTimeout: 60000,   // Longer timeout for batch operations
+      timeout: 900000,        // Longer idle timeout for processing gaps
+      preConnect: true
+    }
+  }
+};
+
+// Analytics/Reporting application
+const analyticsConfig = {
+  mysql: {
+    pool: {
+      connectionLimit: 5,      // Few long-running connections
+      acquireTimeout: 120000,  // Very long timeout for complex queries
+      timeout: 1800000,       // 30 minutes idle timeout
+      preConnect: true
     }
   }
 };
 ```
 
-### 連線池健康監控
+### Dynamic Pool Sizing
 
 ```typescript
-async function monitorPoolHealth(gateway: DataGateway) {
-  const allStatuses = gateway.getAllPoolStatuses();
+// Dynamic configuration based on system resources
+function calculateOptimalPoolSize(): number {
+  const cpuCount = require('os').cpus().length;
+  const memoryGB = require('os').totalmem() / 1024 / 1024 / 1024;
 
-  for (const [providerName, status] of allStatuses) {
-    const utilizationRate = status.activeConnections / status.maxConnections;
+  // Base calculation: 2 connections per CPU core, adjusted for memory
+  let poolSize = cpuCount * 2;
 
-    if (utilizationRate > 0.8) {
-      console.warn(`警告: ${providerName} 連線池使用率過高 (${Math.round(utilizationRate * 100)}%)`);
-    }
-
-    if (status.idleConnections === 0 && status.activeConnections === status.maxConnections) {
-      console.error(`錯誤: ${providerName} 連線池已滿，可能需要增加容量`);
-    }
+  // Adjust for available memory
+  if (memoryGB < 2) {
+    poolSize = Math.max(poolSize / 2, 2);
+  } else if (memoryGB > 8) {
+    poolSize = Math.min(poolSize * 1.5, 50);
   }
+
+  return Math.floor(poolSize);
 }
 
-// 定期監控
-setInterval(() => monitorPoolHealth(gateway), 30000); // 每 30 秒檢查一次
+// Apply dynamic sizing
+const dynamicConfig = {
+  mysql: {
+    pool: {
+      connectionLimit: calculateOptimalPoolSize(),
+      acquireTimeout: 30000,
+      timeout: 600000,
+      preConnect: true
+    }
+  }
+};
 ```
+
+## Best Practices
+
+### 1. Pool Size Guidelines
+
+```typescript
+// Rule of thumb for pool sizing:
+// - Development: 3-5 connections
+// - Testing: 5-10 connections
+// - Production: 10-50 connections (based on load)
+// - Never exceed database server limits
+
+const poolSizeGuidelines = {
+  development: 3,
+  testing: 5,
+  staging: 10,
+  production: Math.min(20, maxServerConnections * 0.8) // Leave 20% buffer
+};
+```
+
+### 2. Timeout Configuration
+
+```typescript
+// Balanced timeout configuration
+const timeoutConfig = {
+  // Quick operations (< 1 second expected)
+  acquireTimeout: 5000,    // 5 seconds max to get connection
+
+  // Medium operations (1-10 seconds expected)
+  acquireTimeout: 15000,   // 15 seconds max to get connection
+
+  // Long operations (> 10 seconds expected)
+  acquireTimeout: 60000,   // 1 minute max to get connection
+
+  // Idle timeout should be longer than longest expected operation
+  timeout: 300000          // 5 minutes idle timeout
+};
+```
+
+### 3. Error Handling
+
+```typescript
+async function robustPoolUsage() {
+  const gateway = await DataGateway.build(config);
+
+  try {
+    const userRepo = gateway.getRepository('users');
+
+    // Monitor pool before operation
+    const poolStatus = gateway.getProviderPoolStatus('mysql');
+    if (poolStatus && poolStatus.activeConnections === poolStatus.maxConnections) {
+      console.warn('Pool near capacity, consider delaying non-critical operations');
+    }
+
+    const result = await userRepo?.findMany();
+    return result;
+
+  } catch (error) {
+    if (error.message.includes('timeout')) {
+      console.error('Pool acquisition timeout - check pool size and query performance');
+    } else if (error.message.includes('connection')) {
+      console.error('Connection error - check database availability');
+    }
+    throw error;
+  } finally {
+    // Connections are automatically returned to pool
+    // Only disconnect all when shutting down application
+  }
+}
+```
+
+### 4. Graceful Shutdown
+
+```typescript
+// Proper application shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down gracefully...');
+
+  try {
+    // Stop accepting new requests
+    server.close();
+
+    // Wait for existing operations to complete
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Disconnect all pools
+    await gateway.disconnectAll();
+
+    console.log('Shutdown complete');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+});
+```
+
+### 5. Health Checks
+
+```typescript
+// Health check endpoint
+async function healthCheck() {
+  const gateway = await DataGateway.build(config);
+
+  try {
+    const allStatuses = gateway.getAllPoolStatuses();
+    const health = {
+      status: 'healthy',
+      pools: {} as Record<string, any>
+    };
+
+    for (const [providerName, status] of allStatuses) {
+      const utilization = status.activeConnections / status.maxConnections;
+
+      health.pools[providerName] = {
+        status: utilization > 0.9 ? 'warning' : 'healthy',
+        utilization: Math.round(utilization * 100),
+        connections: {
+          active: status.activeConnections,
+          total: status.totalConnections,
+          max: status.maxConnections
+        }
+      };
+
+      if (utilization > 0.9) {
+        health.status = 'warning';
+      }
+    }
+
+    return health;
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      error: error.message
+    };
+  }
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Pool Exhaustion**
+   ```typescript
+   // Symptoms: "Pool exhausted" or "Connection timeout" errors
+   // Solutions:
+   - Increase pool size
+   - Reduce query execution time
+   - Check for connection leaks
+   - Add connection queuing limits
+   ```
+
+2. **High Latency**
+   ```typescript
+   // Symptoms: Slow response times despite adequate pool size
+   // Solutions:
+   - Enable preConnect
+   - Optimize query performance
+   - Check network latency to database
+   - Consider read replicas
+   ```
+
+3. **Memory Usage**
+   ```typescript
+   // Symptoms: High memory consumption
+   // Solutions:
+   - Reduce pool size
+   - Shorter idle timeouts
+   - Check for result set size
+   - Enable query result streaming
+   ```
+
+### Debugging Tools
+
+```typescript
+// Enable debug logging
+const debugConfig = {
+  mysql: {
+    pool: {
+      usePool: true,
+      connectionLimit: 10,
+      debug: process.env.NODE_ENV === 'development', // Enable debug logging
+      acquireTimeout: 30000,
+      timeout: 600000
+    }
+  }
+};
+
+// Pool event monitoring
+gateway.on('pool:acquire', (providerName) => {
+  console.log(`Connection acquired from ${providerName} pool`);
+});
+
+gateway.on('pool:release', (providerName) => {
+  console.log(`Connection released to ${providerName} pool`);
+});
+
+gateway.on('pool:error', (providerName, error) => {
+  console.error(`Pool error in ${providerName}:`, error);
+});
+```
+
+## Related Links
+
+- [MySQL Provider Guide](../providers/mysql.md)
+- [PostgreSQL Provider Guide](../providers/postgresql.md)
+- [SQLite Provider Guide](../providers/sqlite.md)
+- [Performance Optimization](./performance.md)
+- [DataGateway API](../api/data-gateway.md)

@@ -1,21 +1,21 @@
-# Basic Usage Guide
+# 基本使用指南
 
-[中文版](./basic-usage.zh-TW.md) | English
+[English](./basic-usage.md) | 中文版
 
-Complete guide to Data Gateway features and usage patterns.
+Data Gateway 功能和使用模式的完整指南。
 
-## Table of Contents
+## 目錄
 
-- [CRUD Operations](#crud-operations)
-- [Query Features](#query-features)
-- [Middleware](#middleware)
-- [Field Mapping](#field-mapping)
-- [Multiple Data Sources](#multiple-data-sources)
-- [Performance](#performance)
+- [CRUD 操作](#crud-操作)
+- [查詢功能](#查詢功能)
+- [中介軟體](#中介軟體)
+- [欄位對映](#欄位對映)
+- [多資料來源](#多資料來源)
+- [效能優化](#效能優化)
 
-## CRUD Operations
+## CRUD 操作
 
-### Create
+### 新增資料
 
 ```typescript
 const userRepo = gateway.getRepository('users');
@@ -28,27 +28,27 @@ const userId = await userRepo.insert({
 });
 ```
 
-### Read
+### 讀取資料
 
 ```typescript
-// Find all
+// 查詢全部
 const users = await userRepo.findMany();
 
-// Find with condition
+// 條件查詢
 const activeUsers = await userRepo.findMany({
   field: 'status',
   op: '=',
   value: 'active'
 });
 
-// Find one
+// 查詢單筆
 const user = await userRepo.findOne({
   field: 'id',
   op: '=',
   value: 1
 });
 
-// Complex query
+// 複雜查詢
 const result = await userRepo.find({
   fields: ['id', 'name', 'email'],
   where: {
@@ -62,33 +62,33 @@ const result = await userRepo.find({
 });
 ```
 
-### Update
+### 更新資料
 
 ```typescript
-// Update single record
+// 更新單筆
 const count = await userRepo.update(
   { status: 'inactive' },
   { field: 'id', op: '=', value: userId }
 );
 
-// Batch update
+// 批次更新
 await userRepo.update(
   { last_login: new Date() },
   { field: 'status', op: '=', value: 'active' }
 );
 ```
 
-### Delete
+### 刪除資料
 
 ```typescript
-// Delete single record
+// 刪除單筆
 const deleted = await userRepo.delete({
   field: 'id',
   op: '=',
   value: userId
 });
 
-// Conditional delete
+// 條件刪除
 await userRepo.delete({
   and: [
     { field: 'status', op: '=', value: 'inactive' },
@@ -97,33 +97,33 @@ await userRepo.delete({
 });
 ```
 
-## Query Features
+## 查詢功能
 
-### Operators
+### 運算子
 
 ```typescript
-// Comparison
+// 比較運算
 { field: 'age', op: '>', value: 18 }
 { field: 'age', op: '<=', value: 65 }
 
-// String matching
+// 字串比對
 { field: 'name', op: 'LIKE', value: 'John%' }
 
-// Array operations
+// 陣列運算
 { field: 'status', op: 'IN', values: ['active', 'pending'] }
 { field: 'role', op: 'NOT IN', values: ['admin'] }
 
-// Range
+// 範圍
 { field: 'age', op: 'BETWEEN', values: [18, 65] }
 
-// Null checks
+// Null 檢查
 { field: 'deleted_at', op: 'IS NULL' }
 ```
 
-### Complex Conditions
+### 複雜條件
 
 ```typescript
-// AND/OR conditions
+// AND/OR 條件
 const result = await userRepo.find({
   where: {
     and: [
@@ -139,10 +139,10 @@ const result = await userRepo.find({
 });
 ```
 
-### Sorting & Pagination
+### 排序與分頁
 
 ```typescript
-// Sorting
+// 排序
 const users = await userRepo.find({
   orderBy: [
     { field: 'created_at', direction: 'DESC' },
@@ -152,7 +152,7 @@ const users = await userRepo.find({
   offset: 0
 });
 
-// Pagination helper
+// 分頁輔助函數
 function paginate(page: number, pageSize: number = 20) {
   return {
     limit: pageSize,
@@ -166,10 +166,10 @@ const page2 = await userRepo.find({
 });
 ```
 
-### Aggregations
+### 聚合查詢
 
 ```typescript
-// Group and aggregate
+// 分組與聚合
 const stats = await userRepo.find({
   fields: [
     'department',
@@ -186,25 +186,25 @@ const stats = await userRepo.find({
 });
 ```
 
-### Field Selection
+### 欄位選擇
 
 ```typescript
-// Select specific fields
+// 選擇特定欄位
 const users = await userRepo.find({
   fields: ['id', 'name', 'email'],
   where: { field: 'status', op: '=', value: 'active' }
 });
 
-// Exclude sensitive fields
+// 排除敏感欄位
 const publicUsers = await userRepo.find({
   fields: ['id', 'name', 'avatar']
-  // password, email excluded
+  // 排除 password, email
 });
 ```
 
-## Middleware
+## 中介軟體
 
-### Logging Middleware
+### 記錄中介軟體
 
 ```typescript
 import { Middleware } from '@wfp99/data-gateway';
@@ -215,10 +215,10 @@ const loggingMiddleware: Middleware = async (query, next) => {
   
   try {
     const result = await next(query);
-    console.log(`✓ Completed in ${Date.now() - start}ms`);
+    console.log(`✓ 完成，耗時 ${Date.now() - start}ms`);
     return result;
   } catch (error) {
-    console.error(`✗ Failed: ${error.message}`);
+    console.error(`✗ 失敗: ${error.message}`);
     throw error;
   }
 };
@@ -234,33 +234,33 @@ const config = {
 };
 ```
 
-### Validation Middleware
+### 驗證中介軟體
 
 ```typescript
 const validationMiddleware: Middleware = async (query, next) => {
   if (query.type === 'INSERT' && query.data) {
     if (!query.data.email || !query.data.email.includes('@')) {
-      throw new Error('Invalid email');
+      throw new Error('電子郵件格式錯誤');
     }
     if (query.data.age && (query.data.age < 0 || query.data.age > 150)) {
-      throw new Error('Invalid age');
+      throw new Error('年齡範圍錯誤');
     }
   }
   return next(query);
 };
 ```
 
-### Soft Delete Middleware
+### 軟刪除中介軟體
 
 ```typescript
 const softDeleteMiddleware: Middleware = async (query, next) => {
-  // Convert DELETE to UPDATE
+  // 將 DELETE 轉換為 UPDATE
   if (query.type === 'DELETE') {
     query.type = 'UPDATE';
     query.data = { deleted_at: new Date() };
   }
   
-  // Filter out deleted records in SELECT
+  // 在 SELECT 時過濾已刪除記錄
   if (query.type === 'SELECT') {
     query.where = query.where ? {
       and: [query.where, { field: 'deleted_at', op: 'IS NULL' }]
@@ -271,12 +271,12 @@ const softDeleteMiddleware: Middleware = async (query, next) => {
 };
 ```
 
-### Caching Middleware
+### 快取中介軟體
 
 ```typescript
 const cacheMiddleware: Middleware = (() => {
   const cache = new Map();
-  const TTL = 5 * 60 * 1000; // 5 minutes
+  const TTL = 5 * 60 * 1000; // 5 分鐘
   
   return async (query, next) => {
     if (query.type !== 'SELECT') return next(query);
@@ -295,9 +295,9 @@ const cacheMiddleware: Middleware = (() => {
 })();
 ```
 
-## Field Mapping
+## 欄位對映
 
-### Basic Mapping
+### 基本對映
 
 ```typescript
 import { MappingFieldMapper } from '@wfp99/data-gateway';
@@ -319,27 +319,27 @@ const config = {
   }
 };
 
-// Use application field names
+// 使用應用程式欄位名稱
 const users = await userRepo.find({
   fields: ['id', 'name', 'createdAt'],
   where: { field: 'createdAt', op: '>', value: lastWeek }
 });
 ```
 
-### Custom Mapper
+### 自訂對映器
 
 ```typescript
 class UserMapper extends MappingFieldMapper {
   transformToDatabase(data: Partial<User>): Record<string, any> {
     const mapped = super.transformToDatabase(data);
     
-    // Transform boolean to database format
+    // 轉換布林值為資料庫格式
     if ('isActive' in data) {
       mapped.status = data.isActive ? 'active' : 'inactive';
       delete mapped.isActive;
     }
     
-    // Encrypt sensitive fields
+    // 加密敏感欄位
     if (data.ssn) {
       mapped.ssn = encrypt(data.ssn);
     }
@@ -350,12 +350,12 @@ class UserMapper extends MappingFieldMapper {
   transformFromDatabase(data: Record<string, any>): Partial<User> {
     const mapped = super.transformFromDatabase(data);
     
-    // Transform database format to boolean
+    // 轉換資料庫格式為布林值
     if ('status' in data) {
       mapped.isActive = data.status === 'active';
     }
     
-    // Decrypt sensitive fields
+    // 解密敏感欄位
     if (data.ssn) {
       mapped.ssn = decrypt(data.ssn);
     }
@@ -365,9 +365,9 @@ class UserMapper extends MappingFieldMapper {
 }
 ```
 
-## Multiple Data Sources
+## 多資料來源
 
-### Configuration
+### 配置
 
 ```typescript
 const config = {
@@ -413,10 +413,10 @@ const config = {
 const gateway = new DataGateway(config);
 ```
 
-### Cross-Source Queries
+### 跨來源查詢
 
 ```typescript
-// Query from different sources
+// 從不同來源查詢
 const user = await gateway.getRepository('users').findOne({
   field: 'id',
   op: '=',
@@ -435,7 +435,7 @@ const session = await gateway.getRepository('sessions').findOne({
   value: userId
 });
 
-// Combine data in application layer
+// 在應用層合併資料
 const userProfile = {
   ...user,
   stats,
@@ -443,51 +443,51 @@ const userProfile = {
 };
 ```
 
-## Performance
+## 效能優化
 
-### Query Optimization
+### 查詢優化
 
 ```typescript
-// ✅ Good: Use indexed fields
+// ✅ 好：使用索引欄位
 const user = await userRepo.findOne({
-  field: 'email', // indexed
+  field: 'email', // 已建立索引
   op: '=',
   value: 'user@example.com'
 });
 
-// ✅ Good: Limit result sets
+// ✅ 好：限制結果數量
 const recent = await userRepo.find({
   limit: 100,
   orderBy: [{ field: 'created_at', direction: 'DESC' }]
 });
 
-// ✅ Good: Select only needed fields
+// ✅ 好：只查詢需要的欄位
 const list = await userRepo.find({
   fields: ['id', 'name', 'avatar']
 });
 
-// ✅ Good: Batch operations
+// ✅ 好：批次操作
 const users = await userRepo.findMany({
   field: 'id',
   op: 'IN',
   values: [1, 2, 3, 4, 5]
 });
 
-// ❌ Avoid: Non-indexed LIKE queries
+// ❌ 避免：非索引 LIKE 查詢
 const users = await userRepo.findMany({
   field: 'biography',
   op: 'LIKE',
   value: '%keyword%'
 });
 
-// ❌ Avoid: Unbounded queries
-const all = await userRepo.findMany(); // No limit!
+// ❌ 避免：無限制查詢
+const all = await userRepo.findMany(); // 沒有 limit！
 ```
 
-### Connection Pooling
+### 連線池
 
 ```typescript
-// Production configuration
+// 生產環境配置
 const prodConfig = {
   providers: {
     mysql: {
@@ -506,21 +506,21 @@ const prodConfig = {
   }
 };
 
-// Monitor pool status
+// 監控連線池狀態
 const status = gateway.getProviderPoolStatus('mysql');
-console.log(`Pool: ${status.activeConnections}/${status.maxConnections}`);
+console.log(`連線池: ${status.activeConnections}/${status.maxConnections}`);
 
-// Check all pools
+// 檢查所有連線池
 const allStatuses = gateway.getAllPoolStatuses();
 for (const [name, status] of allStatuses) {
   console.log(`${name}: ${status.activeConnections}/${status.maxConnections}`);
 }
 ```
 
-### Batch Processing
+### 批次處理
 
 ```typescript
-// Process large datasets with pagination
+// 使用分頁處理大型資料集
 async function processAllUsers(batchSize = 1000) {
   let offset = 0;
   let hasMore = true;
@@ -541,7 +541,7 @@ async function processAllUsers(batchSize = 1000) {
   }
 }
 
-// Cursor-based pagination (more efficient)
+// 游標分頁（更高效）
 async function processCursorPagination(pageSize = 1000) {
   let lastId = 0;
   
@@ -560,10 +560,10 @@ async function processCursorPagination(pageSize = 1000) {
 }
 ```
 
-## Error Handling
+## 錯誤處理
 
 ```typescript
-// Basic error handling
+// 基本錯誤處理
 try {
   const user = await userRepo.findOne({
     field: 'id',
@@ -571,22 +571,22 @@ try {
     value: userId
   });
 } catch (error) {
-  console.error('Query failed:', error.message);
+  console.error('查詢失敗:', error.message);
 }
 
-// Provider-specific errors
+// Provider 特定錯誤
 try {
   await userRepo.insert(data);
 } catch (error) {
   if (error.code === 'ER_DUP_ENTRY') {
-    throw new Error('Email already exists');
+    throw new Error('電子郵件已存在');
   } else if (error.code === '23505') {
-    throw new Error('Unique constraint violation');
+    throw new Error('唯一性約束違反');
   }
   throw error;
 }
 
-// Graceful shutdown
+// 優雅關閉
 async function shutdown() {
   await gateway.disconnectAll();
   process.exit(0);
@@ -596,22 +596,22 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 ```
 
-## Best Practices
+## 最佳實踐
 
-1. **Use connection pooling** in production
-2. **Always limit** query results
-3. **Select specific fields** instead of `*`
-4. **Use batch operations** for multiple records
-5. **Implement error handling** and retries
-6. **Monitor pool status** regularly
-7. **Use middleware** for cross-cutting concerns
-8. **Map fields** for clean separation
-9. **Close connections** on shutdown
+1. **使用連線池**於生產環境
+2. **總是限制**查詢結果
+3. **選擇特定欄位**而非 `*`
+4. **使用批次操作**處理多筆記錄
+5. **實作錯誤處理**和重試機制
+6. **定期監控**連線池狀態
+7. **使用中介軟體**處理橫切關注點
+8. **對映欄位**實現乾淨分離
+9. **關閉連線**於程式結束時
 
-## Next Steps
+## 下一步
 
-- [Field Mapping Guide](./field-mapping.md)
-- [Middleware Guide](./middleware.md)
-- [Performance Tuning](../advanced/performance.md)
-- [Provider Documentation](../providers/)
-- [FAQ](../faq.md)
+- [欄位對映指南](./field-mapping.zh-TW.md)
+- [中介軟體指南](./middleware.zh-TW.md)
+- [效能調校](../advanced/performance.zh-TW.md)
+- [Provider 文件](../providers/)
+- [FAQ](../faq.zh-TW.md)
