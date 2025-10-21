@@ -1,4 +1,6 @@
 import { Query, QueryResult } from './queryObject';
+import { PreparedQuery } from './preparedQuery';
+import { SQLEscaper } from './dataProviders/sqlEscaper';
 
 /**
  * Connection pool status information.
@@ -38,6 +40,21 @@ export interface DataProvider
 	 * @returns The query result object.
 	 */
 	query<T = any>(query: Query): Promise<QueryResult<T>>;
+
+	/**
+	 * Executes a pre-compiled PreparedQuery.
+	 * This method is more efficient as all validation and compilation is already done.
+	 * @param preparedQuery The prepared query object.
+	 * @returns The query result object.
+	 */
+	executePrepared?<T = any>(preparedQuery: PreparedQuery): Promise<QueryResult<T>>;
+
+	/**
+	 * Returns the database-specific SQL escaper.
+	 * Used by QueryCompiler to escape identifiers correctly.
+	 * @returns Database-specific SQLEscaper instance
+	 */
+	getEscaper(): SQLEscaper;
 
 	/**
 	 * Gets the connection pool status (if applicable).
