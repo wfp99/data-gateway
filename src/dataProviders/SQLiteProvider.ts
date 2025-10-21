@@ -1,8 +1,11 @@
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult, fieldRefToString, FieldReference, Aggregate } from '../queryObject';
 import { getLogger } from '../logger';
+import { SQLValidator } from './sqlValidator';
+import { SQLiteEscaper } from './sqlEscaper';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
+import { PreparedQuery } from '../preparedQuery';
 
 /**
  * Connection pool configuration for SQLite.
@@ -50,6 +53,8 @@ export class SQLiteProvider implements DataProvider
 	private readConnectionIndex = 0;
 	/** Logger instance for this provider */
 	private readonly logger: ReturnType<typeof getLogger>;
+	/** SQLite-specific identifier escaper */
+	private readonly escaper = new SQLiteEscaper();
 
 	/**
 	 * Creates an instance of SQLiteProvider.
@@ -70,94 +75,6 @@ export class SQLiteProvider implements DataProvider
 		});
 	}
 
-	/**
-	 * Validate SQL identifiers (table names, field names, etc.)
-	 * Only allows letters, numbers, underscores, and dots (for table.field format)
-	 */
-	private validateIdentifier(identifier: string): string
-	{
-		this.logger.debug('Validating SQLite identifier', { identifier });
-
-		if (!identifier || typeof identifier !== 'string')
-		{
-			this.logger.error('Invalid identifier: empty or non-string', { identifier });
-			throw new Error('Invalid identifier: empty or non-string');
-		}
-		// Allow letters at the beginning, followed by letters, numbers, underscores, and dots (for table.field)
-		const pattern = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)?$/;
-		if (!pattern.test(identifier) || identifier.length > 128)
-		{
-			this.logger.error('Invalid SQLite identifier detected', { identifier, reason: 'Contains invalid characters or too long' });
-			throw new Error(`Invalid identifier: ${identifier}`);
-		}
-
-		this.logger.debug('SQLite identifier validated successfully', { identifier });
-		return identifier;
-	}
-
-	/**
-	 * Escapes a database identifier with double quotes, handling table.field format.
-	 * @param identifier The identifier to escape (e.g., "users.id" or "id").
-	 * @returns The escaped identifier (e.g., "\"users\".\"id\"" or "\"id\"").
-	 */
-	private escapeIdentifier(identifier: string): string
-	{
-		// Split by dot to handle table.field format
-		const parts = identifier.split('.');
-
-		// Escape each part separately with double quotes
-		return parts.map(part => `"${part}"`).join('.');
-	}
-
-	/**
-	 * Validate alias
-	 */
-	private validateAlias(alias: string): string
-	{
-		this.logger.debug('Validating SQLite alias', { alias });
-		const result = this.validateIdentifier(alias);
-		this.logger.debug('SQLite alias validated successfully', { alias });
-		return result;
-	}
-
-	/**
-	 * Validate sort direction
-	 */
-	private validateDirection(direction: string): string
-	{
-		this.logger.debug('Validating sort direction', { direction });
-
-		if (direction !== 'ASC' && direction !== 'DESC')
-		{
-			this.logger.error('Invalid sort direction detected', { direction, validDirections: ['ASC', 'DESC'] });
-			throw new Error(`Invalid direction: ${direction}`);
-		}
-
-		this.logger.debug('Sort direction validated successfully', { direction });
-		return direction;
-	}
-
-	/**
-	 * Validate JOIN type
-	 */
-	private validateJoinType(joinType: string): string
-	{
-		const allowedJoinTypes = ['INNER', 'LEFT', 'RIGHT', 'FULL OUTER'];
-		if (!allowedJoinTypes.includes(joinType.toUpperCase()))
-		{
-			throw new Error(`Invalid JOIN type: ${joinType}`);
-		}
-		return joinType.toUpperCase();
-	}
-
-	/**
-	 * Validate SQL operators
-	 */
-	private validateOperator(operator: string): boolean
-	{
-		const allowedOperators = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL'];
-		return allowedOperators.includes(operator.toUpperCase());
-	}
 
 	/**
 	 * Validate the security of query objects
@@ -166,96 +83,7 @@ export class SQLiteProvider implements DataProvider
 	private validateQuery(query: Query): void
 	{
 		this.logger.debug('Validating SQLite query structure', { type: query.type, table: query.table });
-
-		// Validate table name
-		if (query.table)
-		{
-			this.validateIdentifier(query.table);
-		}
-
-		// Validate fields
-		if (query.type === 'SELECT' && query.fields)
-		{
-			this.logger.debug('Validating SELECT query fields', { fieldCount: query.fields.length });
-			for (const field of query.fields)
-			{
-				if (typeof field === 'string')
-				{
-					if (field !== '*')
-					{
-						this.validateIdentifier(field);
-					}
-				} else if (typeof field === 'object')
-				{
-					// Check if this is an Aggregate
-					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
-					if ('type' in field && typeof field.type === 'string' && validAggregates.includes(field.type))
-					{
-						const agg = field as Aggregate;
-						this.validateIdentifier(agg.type);
-						if (agg.field)
-						{
-							this.validateIdentifier(fieldRefToString(agg.field));
-						}
-						if (agg.alias)
-						{
-							this.validateAlias(agg.alias);
-						}
-					}
-				}
-			}
-		}
-
-		// Validate WHERE conditions
-		if (query.where)
-		{
-			this.validateConditionStructure(query.where);
-		}
-
-		// Validate ORDER BY
-		if (query.orderBy)
-		{
-			for (const order of query.orderBy)
-			{
-				this.validateIdentifier(fieldRefToString(order.field));
-				if (order.direction)
-				{
-					this.validateDirection(order.direction);
-				}
-			}
-		}
-
-		// Validate JOIN
-		if (query.joins)
-		{
-			for (const join of query.joins)
-			{
-				if ('table' in join.source)
-				{
-					this.validateIdentifier(join.source.table!);
-					this.validateJoinType(join.type);
-					this.validateConditionStructure(join.on);
-				}
-				else
-				{
-					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
-					throw new Error('JOIN source must specify a table name');
-				}
-			}
-		}
-
-		// Validate LIMIT and OFFSET
-		if (query.limit !== undefined && (!Number.isInteger(query.limit) || query.limit < 0))
-		{
-			this.logger.error('Invalid LIMIT value detected', { limit: query.limit });
-			throw new Error('Invalid LIMIT value');
-		}
-		if (query.offset !== undefined && (!Number.isInteger(query.offset) || query.offset < 0))
-		{
-			this.logger.error('Invalid OFFSET value detected', { offset: query.offset });
-			throw new Error('Invalid OFFSET value');
-		}
-
+		SQLValidator.validateQuery(query);
 		this.logger.debug('SQLite query structure validation completed successfully', { type: query.type, table: query.table });
 	}
 
@@ -266,31 +94,8 @@ export class SQLiteProvider implements DataProvider
 	private validateConditionStructure(condition: any): void
 	{
 		if (!condition) return;
-
-		if (condition.and)
-		{
-			condition.and.forEach((c: any) => this.validateConditionStructure(c));
-		} else if (condition.or)
-		{
-			condition.or.forEach((c: any) => this.validateConditionStructure(c));
-		} else if (condition.not)
-		{
-			this.validateConditionStructure(condition.not);
-		} else if (condition.field)
-		{
-			this.validateIdentifier(condition.field);
-			if (condition.op)
-			{
-				this.validateOperator(condition.op);
-			}
-			if (condition.subquery)
-			{
-				this.validateQuery(condition.subquery);
-			}
-		} else if (condition.like)
-		{
-			this.validateIdentifier(condition.like.field);
-		}
+		this.logger.debug('Validating SQLite condition structure', { conditionType: Object.keys(condition) });
+		SQLValidator.validateCondition(condition);
 	}
 
 	/**
@@ -440,7 +245,7 @@ export class SQLiteProvider implements DataProvider
 		const params: any[] = [];
 
 		// Validate and get safe table name
-		const safeTableName = this.validateIdentifier(query.table);
+		const safeTableName = SQLValidator.validateIdentifier(query.table);
 
 		if (query.fields && query.fields.length > 0)
 		{
@@ -449,8 +254,8 @@ export class SQLiteProvider implements DataProvider
 				if (typeof f === 'string')
 				{
 					if (f === '*') return '*';
-					const safeFieldName = this.validateIdentifier(f);
-					return this.escapeIdentifier(safeFieldName);
+					const safeFieldName = SQLValidator.validateIdentifier(f);
+					return this.escaper.escapeIdentifier(safeFieldName);
 				} else
 				{
 					// Check if this is an Aggregate
@@ -458,10 +263,10 @@ export class SQLiteProvider implements DataProvider
 					if ('type' in f && typeof f.type === 'string' && validAggregates.includes(f.type))
 					{
 						const agg = f as Aggregate;
-						const safeType = this.validateIdentifier(agg.type);
-						const safeFieldName = this.validateIdentifier(fieldRefToString(agg.field));
-						const safeAlias = agg.alias ? this.validateAlias(agg.alias) : '';
-						return `${safeType}(${this.escapeIdentifier(safeFieldName)})${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
+						const safeType = SQLValidator.validateIdentifier(agg.type);
+						const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(agg.field));
+						const safeAlias = agg.alias ? SQLValidator.validateAlias(agg.alias) : '';
+						return `${safeType}(${this.escaper.escapeIdentifier(safeFieldName)})${safeAlias ? ' AS "' + safeAlias + '"' : ''}`;
 					}
 					// This shouldn't happen but provide a fallback
 					return '*';
@@ -480,8 +285,8 @@ export class SQLiteProvider implements DataProvider
 			{
 				if ('table' in join.source)
 				{
-					const safeJoinType = this.validateJoinType(join.type);
-					const safeJoinTable = this.validateIdentifier(join.source.table!);
+					const safeJoinType = SQLValidator.validateJoinType(join.type);
+					const safeJoinTable = SQLValidator.validateIdentifier(join.source.table!);
 					sql += ` ${safeJoinType} JOIN "${safeJoinTable}" ON ` + this.conditionToSQL(join.on, params);
 				}
 				else
@@ -499,17 +304,17 @@ export class SQLiteProvider implements DataProvider
 
 		if (query.groupBy && query.groupBy.length > 0)
 		{
-			const safeGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
-			sql += ' GROUP BY ' + safeGroupBy.map(f => this.escapeIdentifier(f)).join(', ');
+			const safeGroupBy = query.groupBy.map(f => SQLValidator.validateIdentifier(fieldRefToString(f)));
+			sql += ' GROUP BY ' + safeGroupBy.map(f => this.escaper.escapeIdentifier(f)).join(', ');
 		}
 
 		if (query.orderBy && query.orderBy.length > 0)
 		{
 			sql += ' ORDER BY ' + query.orderBy.map(o =>
 			{
-				const safeField = this.validateIdentifier(fieldRefToString(o.field));
-				const safeDirection = this.validateDirection(o.direction);
-				return `${this.escapeIdentifier(safeField)} ${safeDirection}`;
+				const safeField = SQLValidator.validateIdentifier(fieldRefToString(o.field));
+				const safeDirection = SQLValidator.validateDirection(o.direction);
+				return `${this.escaper.escapeIdentifier(safeField)} ${safeDirection}`;
 			}).join(', ');
 		}
 
@@ -587,9 +392,9 @@ export class SQLiteProvider implements DataProvider
 	{
 		if (!query.values) throw new Error('INSERT must have values');
 
-		const safeTableName = this.validateIdentifier(query.table);
+		const safeTableName = SQLValidator.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
-		const safeKeys = keys.map(k => this.validateIdentifier(k));
+		const safeKeys = keys.map(k => SQLValidator.validateIdentifier(k));
 
 		const sql = `INSERT INTO "${safeTableName}" (${safeKeys.map(k => `"${k}"`).join(', ')}) VALUES (${keys.map(_ => '?').join(', ')})`;
 		const params = keys.map(k => this.convertValueToSQLite(query.values![k]));
@@ -605,9 +410,9 @@ export class SQLiteProvider implements DataProvider
 	{
 		if (!query.values) throw new Error('UPDATE must have values');
 
-		const safeTableName = this.validateIdentifier(query.table);
+		const safeTableName = SQLValidator.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
-		const safeKeys = keys.map(k => this.validateIdentifier(k));
+		const safeKeys = keys.map(k => SQLValidator.validateIdentifier(k));
 
 		let sql = `UPDATE "${safeTableName}" SET ` + safeKeys.map(k => `"${k}" = ?`).join(', ');
 		const params = keys.map(k => this.convertValueToSQLite(query.values![k]));
@@ -626,7 +431,7 @@ export class SQLiteProvider implements DataProvider
 	 */
 	private buildDeleteSQL(query: Query): { sql: string; params: any[] }
 	{
-		const safeTableName = this.validateIdentifier(query.table);
+		const safeTableName = SQLValidator.validateIdentifier(query.table);
 		let sql = `DELETE FROM "${safeTableName}"`;
 		const params: any[] = [];
 
@@ -652,10 +457,10 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
+			const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
-			return `${this.escapeIdentifier(safeFieldName)} ${cond.op} (${sql})`;
+			return `${this.escaper.escapeIdentifier(safeFieldName)} ${cond.op} (${sql})`;
 		}
 		else if ('field' in cond && 'op' in cond && 'value' in cond)
 		{
@@ -664,9 +469,9 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
+			const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
 			params.push(this.convertValueToSQLite(cond.value));
-			return `${this.escapeIdentifier(safeFieldName)} ${cond.op} ?`;
+			return `${this.escaper.escapeIdentifier(safeFieldName)} ${cond.op} ?`;
 		}
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
 		{
@@ -675,9 +480,9 @@ export class SQLiteProvider implements DataProvider
 			{
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.field));
+			const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values.map(v => this.convertValueToSQLite(v)));
-			return `${this.escapeIdentifier(safeFieldName)} ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			return `${this.escaper.escapeIdentifier(safeFieldName)} ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 		}
 		else if ('and' in cond)
 		{
@@ -693,9 +498,9 @@ export class SQLiteProvider implements DataProvider
 		}
 		else if ('like' in cond)
 		{
-			const safeFieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
+			const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
-			return `${this.escapeIdentifier(safeFieldName)} LIKE ?`;
+			return `${this.escaper.escapeIdentifier(safeFieldName)} LIKE ?`;
 		}
 		throw new Error('Unknown condition type');
 	}
@@ -826,5 +631,229 @@ export class SQLiteProvider implements DataProvider
 			});
 			return { error: `[SQLiteProvider.query] ${error}` };
 		}
+	}
+
+	/**
+	 * Executes a prepared query that has been pre-compiled and validated.
+	 * @param preparedQuery The prepared query object from QueryCompiler.
+	 * @returns The query result.
+	 */
+	async executePrepared<T = any>(preparedQuery: PreparedQuery): Promise<QueryResult<T>>
+	{
+		this.logger.debug('Executing prepared SQLite query', { type: preparedQuery.type, table: preparedQuery.table });
+
+		try
+		{
+			let sql: string;
+			let params: any[] = [];
+
+			// Build SQL based on query type
+			switch (preparedQuery.type)
+			{
+				case 'SELECT':
+					const selectResult = this.buildSelectFromPrepared(preparedQuery);
+					sql = selectResult.sql;
+					params = selectResult.params;
+					break;
+
+				case 'INSERT':
+					const insertResult = this.buildInsertFromPrepared(preparedQuery);
+					sql = insertResult.sql;
+					params = insertResult.params;
+					break;
+
+				case 'UPDATE':
+					const updateResult = this.buildUpdateFromPrepared(preparedQuery);
+					sql = updateResult.sql;
+					params = updateResult.params;
+					break;
+
+				case 'DELETE':
+					const deleteResult = this.buildDeleteFromPrepared(preparedQuery);
+					sql = deleteResult.sql;
+					params = deleteResult.params;
+					break;
+
+				default:
+					const unknownTypeError = '[SQLiteProvider.executePrepared] Unknown query type: ' + preparedQuery.type;
+					this.logger.error(unknownTypeError, { type: preparedQuery.type });
+					return { error: unknownTypeError };
+			}
+
+			this.logger.debug('Executing SQL', { sql, params });
+
+			// Get appropriate connection
+			const db = preparedQuery.type === 'SELECT' ? this.getReadConnection() : this.db;
+			if (!db)
+			{
+				throw new Error('Database connection not established');
+			}
+
+			// Execute the query based on type
+			if (preparedQuery.type === 'SELECT')
+			{
+				const rows = await db.all<T[]>(sql, params);
+				this.logger.debug('SELECT query completed', { table: preparedQuery.table, rowCount: rows.length });
+				return { rows };
+			}
+			else if (preparedQuery.type === 'INSERT')
+			{
+				const result = await db.run(sql, params);
+				const insertId = result.lastID;
+				this.logger.info('INSERT query completed', { table: preparedQuery.table, insertId });
+				return { insertId };
+			}
+			else
+			{
+				const result = await db.run(sql, params);
+				const affectedRows = result.changes || 0;
+				this.logger.info(`${preparedQuery.type} query completed`, { table: preparedQuery.table, affectedRows });
+				return { affectedRows };
+			}
+		}
+		catch (err)
+		{
+			const errorMsg = `[SQLiteProvider.executePrepared] ${err instanceof Error ? err.message : String(err)}`;
+			this.logger.error(errorMsg, { type: preparedQuery.type, table: preparedQuery.table });
+			return { error: errorMsg };
+		}
+	}
+
+	/**
+	 * Builds SELECT SQL from PreparedQuery.
+	 * Note: SQLite uses ? placeholders like MySQL.
+	 */
+	private buildSelectFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		const fields = prepared.safeFields?.join(', ') || '*';
+
+		let sql = `SELECT ${fields} FROM ${table}`;
+		const params: any[] = [];
+
+		// Add JOINs
+		if (prepared.joins && prepared.joins.length > 0)
+		{
+			for (const join of prepared.joins)
+			{
+				const joinTable = this.escaper.escapeIdentifier(join.table);
+				sql += ` ${join.type} JOIN ${joinTable}`;
+				if (join.alias)
+				{
+					sql += ` AS ${this.escaper.escapeIdentifier(join.alias)}`;
+				}
+				sql += ` ON ${join.on.sql}`;
+				params.push(...join.on.params);
+			}
+		}
+
+		// Add WHERE
+		if (prepared.where)
+		{
+			sql += ` WHERE ${prepared.where.sql}`;
+			params.push(...prepared.where.params);
+		}
+
+		// Add GROUP BY
+		if (prepared.groupBy && prepared.groupBy.length > 0)
+		{
+			sql += ` GROUP BY ${prepared.groupBy.join(', ')}`;
+		}
+
+		// Add ORDER BY
+		if (prepared.orderBy && prepared.orderBy.length > 0)
+		{
+			const orderClauses = prepared.orderBy.map(o => `${o.field} ${o.direction}`);
+			sql += ` ORDER BY ${orderClauses.join(', ')}`;
+		}
+
+		// Add LIMIT
+		if (prepared.limit !== undefined)
+		{
+			sql += ` LIMIT ${prepared.limit}`;
+		}
+
+		// Add OFFSET
+		if (prepared.offset !== undefined)
+		{
+			sql += ` OFFSET ${prepared.offset}`;
+		}
+
+		return { sql, params };
+	}
+
+	/**
+	 * Builds INSERT SQL from PreparedQuery.
+	 */
+	private buildInsertFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		if (!prepared.values || Object.keys(prepared.values).length === 0)
+		{
+			throw new Error('INSERT query requires values');
+		}
+
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		const fields = Object.keys(prepared.values).map(f => this.escaper.escapeIdentifier(f));
+		const placeholders = Object.keys(prepared.values).map(() => '?');
+		const params = Object.values(prepared.values);
+
+		const sql = `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${placeholders.join(', ')})`;
+
+		return { sql, params };
+	}
+
+	/**
+	 * Builds UPDATE SQL from PreparedQuery.
+	 */
+	private buildUpdateFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		if (!prepared.values || Object.keys(prepared.values).length === 0)
+		{
+			throw new Error('UPDATE query requires values');
+		}
+
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		const setClauses = Object.keys(prepared.values).map(f => `${this.escaper.escapeIdentifier(f)} = ?`);
+		const params = [...Object.values(prepared.values)];
+
+		let sql = `UPDATE ${table} SET ${setClauses.join(', ')}`;
+
+		// Add WHERE
+		if (prepared.where)
+		{
+			sql += ` WHERE ${prepared.where.sql}`;
+			params.push(...prepared.where.params);
+		}
+
+		return { sql, params };
+	}
+
+	/**
+	 * Builds DELETE SQL from PreparedQuery.
+	 */
+	private buildDeleteFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		let sql = `DELETE FROM ${table}`;
+		const params: any[] = [];
+
+		// Add WHERE
+		if (prepared.where)
+		{
+			sql += ` WHERE ${prepared.where.sql}`;
+			params.push(...prepared.where.params);
+		}
+
+		return { sql, params };
+	}
+
+	/**
+	 * Returns the SQLite-specific SQL escaper.
+	 * Used by QueryCompiler to escape identifiers correctly.
+	 * @returns SQLiteEscaper instance
+	 */
+	getEscaper(): SQLiteEscaper
+	{
+		return this.escaper;
 	}
 }
