@@ -1,8 +1,11 @@
 
 import { DataProvider, ConnectionPoolStatus } from '../dataProvider';
 import { Condition, Query, QueryResult, fieldRefToString, FieldReference, Aggregate } from '../queryObject';
+import { PreparedQuery } from '../preparedQuery';
 import mysql, { Connection, ConnectionOptions, Pool, PoolOptions } from 'mysql2/promise';
 import { getLogger } from '../logger';
+import { SQLValidator } from './sqlValidator';
+import { MySQLEscaper } from './sqlEscaper';
 
 /**
  * Connection pool configuration options.
@@ -62,6 +65,11 @@ export class MySQLProvider implements DataProvider
 	 * Logger instance for this provider.
 	 */
 	private readonly logger = getLogger('MySQLProvider');
+
+	/**
+	 * SQL escaper for MySQL identifiers.
+	 */
+	private readonly escaper = new MySQLEscaper();
 
 	/**
 	 * Constructor that takes connection options.
@@ -245,102 +253,6 @@ export class MySQLProvider implements DataProvider
 	}
 
 	/**
-	 * Validates and escapes a database identifier (table name, column name).
-	 * @param identifier The identifier to validate.
-	 * @returns The validated identifier.
-	 */
-	private validateIdentifier(identifier: string): string
-	{
-		this.logger.debug('Validating SQL identifier', { identifier });
-
-		// Only allow alphanumeric characters, underscores, and dots (for schema.table)
-		if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/.test(identifier))
-		{
-			this.logger.error('Invalid SQL identifier detected', { identifier, reason: 'Contains invalid characters' });
-			throw new Error(`Invalid identifier: ${identifier}`);
-		}
-
-		this.logger.debug('SQL identifier validated successfully', { identifier });
-		return identifier;
-	}
-
-	/**
-	 * Escapes a database identifier with backticks, handling table.field format.
-	 * @param identifier The identifier to escape (e.g., "users.id" or "id").
-	 * @returns The escaped identifier (e.g., "`users`.`id`" or "`id`").
-	 */
-	private escapeIdentifier(identifier: string): string
-	{
-		// Split by dot to handle table.field format
-		const parts = identifier.split('.');
-
-		// Escape each part separately
-		return parts.map(part => `\`${part}\``).join('.');
-	}
-
-	/**
-	 * Validates an SQL alias.
-	 * @param alias The alias to validate.
-	 * @returns The validated alias.
-	 */
-	private validateAlias(alias: string): string
-	{
-		this.logger.debug('Validating SQL alias', { alias });
-
-		// Only allow alphanumeric characters and underscores
-		if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias))
-		{
-			this.logger.error('Invalid SQL alias detected', { alias, reason: 'Contains invalid characters' });
-			throw new Error(`Invalid alias: ${alias}`);
-		}
-
-		this.logger.debug('SQL alias validated successfully', { alias });
-		return alias;
-	}
-
-	/**
-	 * Validates ORDER BY direction.
-	 * @param direction The direction to validate.
-	 * @returns The validated direction.
-	 */
-	private validateDirection(direction: string): string
-	{
-		this.logger.debug('Validating ORDER BY direction', { direction });
-
-		const validDirections = ['ASC', 'DESC'];
-		if (!validDirections.includes(direction.toUpperCase()))
-		{
-			this.logger.error('Invalid ORDER BY direction detected', { direction, validDirections });
-			throw new Error(`Invalid ORDER BY direction: ${direction}`);
-		}
-
-		const validatedDirection = direction.toUpperCase();
-		this.logger.debug('ORDER BY direction validated successfully', { direction: validatedDirection });
-		return validatedDirection;
-	}
-
-	/**
-	 * Validates JOIN type.
-	 * @param joinType The JOIN type to validate.
-	 * @returns The validated JOIN type.
-	 */
-	private validateJoinType(joinType: string): string
-	{
-		this.logger.debug('Validating JOIN type', { joinType });
-
-		const validJoinTypes = ['INNER', 'LEFT', 'RIGHT', 'FULL'];
-		if (!validJoinTypes.includes(joinType.toUpperCase()))
-		{
-			this.logger.error('Invalid JOIN type detected', { joinType, validJoinTypes });
-			throw new Error(`Invalid JOIN type: ${joinType}`);
-		}
-
-		const validatedJoinType = joinType.toUpperCase();
-		this.logger.debug('JOIN type validated successfully', { joinType: validatedJoinType });
-		return validatedJoinType;
-	}
-
-	/**
 	 * Builds the SQL and parameters for a SELECT query.
 	 * @param query The query object.
 	 */
@@ -352,7 +264,7 @@ export class MySQLProvider implements DataProvider
 		const params: any[] = [];
 
 		// Validate table name
-		const tableName = this.validateIdentifier(query.table);
+		const tableName = SQLValidator.validateIdentifier(query.table);
 
 		if (query.fields && query.fields.length > 0)
 		{
@@ -362,20 +274,19 @@ export class MySQLProvider implements DataProvider
 				if (typeof f === 'object' && f !== null && 'type' in f && f.type)
 				{
 					// Validate aggregate type
-					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
-					if (!validAggregates.includes(f.type))
+					if (!SQLValidator.validateAggregateType(f.type))
 					{
 						throw new Error(`Invalid aggregate type: ${f.type}`);
 					}
-					const fieldName = this.validateIdentifier(fieldRefToString(f.field));
-					const alias = f.alias ? this.validateAlias(f.alias) : '';
-					return `${f.type}(${this.escapeIdentifier(fieldName)})${alias ? ' AS `' + alias + '`' : ''}`;
+					const fieldName = SQLValidator.validateIdentifier(fieldRefToString(f.field));
+					const alias = f.alias ? SQLValidator.validateAlias(f.alias) : '';
+					return `${f.type}(${this.escaper.escapeIdentifier(fieldName)})${alias ? ' AS `' + alias + '`' : ''}`;
 				}
 				else
 				{
 					// It's a FieldReference (string or object format)
-					const fieldName = this.validateIdentifier(fieldRefToString(f as FieldReference));
-					return this.escapeIdentifier(fieldName);
+					const fieldName = SQLValidator.validateIdentifier(fieldRefToString(f as FieldReference));
+					return this.escaper.escapeIdentifier(fieldName);
 				}
 			}).join(', ');
 			sql += fields;
@@ -390,8 +301,8 @@ export class MySQLProvider implements DataProvider
 			{
 				if ('table' in join.source)
 				{
-					const joinType = this.validateJoinType(join.type);
-					const joinTable = this.validateIdentifier(join.source.table);
+					const joinType = SQLValidator.validateJoinType(join.type);
+					const joinTable = SQLValidator.validateIdentifier(join.source.table);
 					sql += ` ${joinType} JOIN \`${joinTable}\` ON ` + this.conditionToSQL(join.on, params);
 				}
 				else
@@ -407,16 +318,16 @@ export class MySQLProvider implements DataProvider
 		}
 		if (query.groupBy && query.groupBy.length > 0)
 		{
-			const validatedGroupBy = query.groupBy.map(f => this.validateIdentifier(fieldRefToString(f)));
-			sql += ' GROUP BY ' + validatedGroupBy.map(f => this.escapeIdentifier(f)).join(', ');
+			const validatedGroupBy = query.groupBy.map(f => SQLValidator.validateIdentifier(fieldRefToString(f)));
+			sql += ' GROUP BY ' + validatedGroupBy.map(f => this.escaper.escapeIdentifier(f)).join(', ');
 		}
 		if (query.orderBy && query.orderBy.length > 0)
 		{
 			sql += ' ORDER BY ' + query.orderBy.map(o =>
 			{
-				const fieldName = this.validateIdentifier(fieldRefToString(o.field));
-				const direction = this.validateDirection(o.direction);
-				return `${this.escapeIdentifier(fieldName)} ${direction}`;
+				const fieldName = SQLValidator.validateIdentifier(fieldRefToString(o.field));
+				const direction = SQLValidator.validateDirection(o.direction);
+				return `${this.escaper.escapeIdentifier(fieldName)} ${direction}`;
 			}).join(', ');
 		}
 		if (query.limit !== undefined && typeof query.limit === 'number' && query.limit > 0)
@@ -447,11 +358,11 @@ export class MySQLProvider implements DataProvider
 			throw new Error('INSERT must have values');
 		}
 
-		const tableName = this.validateIdentifier(query.table);
+		const tableName = SQLValidator.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
 
 		// Validate all column names
-		const validatedKeys = keys.map(k => this.validateIdentifier(k));
+		const validatedKeys = keys.map(k => SQLValidator.validateIdentifier(k));
 
 		const sql = `INSERT INTO \`${tableName}\` (${validatedKeys.map(k => `\`${k}\``).join(', ')}) VALUES (${keys.map(_ => '?').join(', ')})`;
 		const params = keys.map(k => query.values![k]);
@@ -473,11 +384,11 @@ export class MySQLProvider implements DataProvider
 			throw new Error('UPDATE must have values');
 		}
 
-		const tableName = this.validateIdentifier(query.table);
+		const tableName = SQLValidator.validateIdentifier(query.table);
 		const keys = Object.keys(query.values);
 
 		// Validate all column names
-		const validatedKeys = keys.map(k => this.validateIdentifier(k));
+		const validatedKeys = keys.map(k => SQLValidator.validateIdentifier(k));
 
 		let sql = `UPDATE \`${tableName}\` SET ` + validatedKeys.map(k => `\`${k}\` = ?`).join(', ');
 		const params = keys.map(k => query.values![k]);
@@ -498,7 +409,7 @@ export class MySQLProvider implements DataProvider
 	{
 		this.logger.debug('Building DELETE SQL statement', { table: query.table, where: query.where });
 
-		const tableName = this.validateIdentifier(query.table);
+		const tableName = SQLValidator.validateIdentifier(query.table);
 		let sql = `DELETE FROM \`${tableName}\``;
 		const params: any[] = [];
 		if (query.where)
@@ -532,8 +443,8 @@ export class MySQLProvider implements DataProvider
 			// Build the subquery into SQL and merge its parameters
 			const { sql, params: subParams } = this.buildSelectSQL(cond.subquery);
 			params.push(...subParams);
-			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
-			const result = `${this.escapeIdentifier(fieldName)} ${cond.op} (${sql})`;
+			const fieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
+			const result = `${this.escaper.escapeIdentifier(fieldName)} ${cond.op} (${sql})`;
 			this.logger.debug('Subquery condition converted to SQL', { result });
 			return result;
 		}
@@ -548,9 +459,9 @@ export class MySQLProvider implements DataProvider
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
 			// Validate field name
-			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
+			const fieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
 			params.push(cond.value);
-			const result = `${this.escapeIdentifier(fieldName)} ${cond.op} ?`;
+			const result = `${this.escaper.escapeIdentifier(fieldName)} ${cond.op} ?`;
 			this.logger.debug('Field comparison condition converted to SQL', { result });
 			return result;
 		}
@@ -563,9 +474,9 @@ export class MySQLProvider implements DataProvider
 				this.logger.error('Invalid IN/NOT IN operator', { operator: cond.op, allowedOps });
 				throw new Error(`Invalid operator: ${cond.op}`);
 			}
-			const fieldName = this.validateIdentifier(fieldRefToString(cond.field));
+			const fieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
 			params.push(...cond.values);
-			const result = `${this.escapeIdentifier(fieldName)} ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
+			const result = `${this.escaper.escapeIdentifier(fieldName)} ${cond.op} (${cond.values.map(() => '?').join(', ')})`;
 			this.logger.debug('IN/NOT IN condition converted to SQL', { result, valueCount: cond.values.length });
 			return result;
 		}
@@ -597,9 +508,9 @@ export class MySQLProvider implements DataProvider
 		else if ('like' in cond)
 		{
 			this.logger.debug('Processing LIKE condition', { field: cond.like.field, pattern: cond.like.pattern });
-			const fieldName = this.validateIdentifier(fieldRefToString(cond.like.field));
+			const fieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.like.field));
 			params.push(cond.like.pattern);
-			const result = `${this.escapeIdentifier(fieldName)} LIKE ?`;
+			const result = `${this.escaper.escapeIdentifier(fieldName)} LIKE ?`;
 			this.logger.debug('LIKE condition converted to SQL', { result });
 			return result;
 		}
@@ -746,112 +657,234 @@ export class MySQLProvider implements DataProvider
 	}
 
 	/**
+	 * Executes a pre-compiled PreparedQuery.
+	 * This method is more efficient as all validation and compilation is already done.
+	 * @param preparedQuery The prepared query object.
+	 * @returns The query result object.
+	 */
+	async executePrepared<T = any>(preparedQuery: PreparedQuery): Promise<QueryResult<T>>
+	{
+		this.logger.debug('Executing prepared MySQL query', { type: preparedQuery.type, table: preparedQuery.table });
+
+		try
+		{
+			let sql: string;
+			let params: any[] = [];
+
+			switch (preparedQuery.type)
+			{
+				case 'SELECT':
+					sql = this.buildSelectFromPrepared(preparedQuery);
+					params = preparedQuery.where?.params || [];
+					break;
+
+				case 'INSERT':
+					const insertResult = this.buildInsertFromPrepared(preparedQuery);
+					sql = insertResult.sql;
+					params = insertResult.params;
+					break;
+
+				case 'UPDATE':
+					const updateResult = this.buildUpdateFromPrepared(preparedQuery);
+					sql = updateResult.sql;
+					params = updateResult.params;
+					break;
+
+				case 'DELETE':
+					const deleteResult = this.buildDeleteFromPrepared(preparedQuery);
+					sql = deleteResult.sql;
+					params = deleteResult.params;
+					break;
+
+				default:
+					const unknownTypeError = '[MySQLProvider.executePrepared] Unknown query type: ' + preparedQuery.type;
+					this.logger.error(unknownTypeError, { type: preparedQuery.type });
+					return { error: unknownTypeError };
+			}
+
+			this.logger.debug('Executing SQL', { sql, params });
+
+			// Execute the query
+			const conn = this.pool || this.connection;
+			if (!conn)
+			{
+				throw new Error('Database connection not established');
+			}
+
+			const results = await conn.execute(sql, params);
+
+			// Process results based on query type
+			if (preparedQuery.type === 'SELECT')
+			{
+				const rows = results[0] as T[];
+				this.logger.debug('SELECT query completed', { table: preparedQuery.table, rowCount: rows.length });
+				return { rows };
+			}
+			else if (preparedQuery.type === 'INSERT')
+			{
+				const resultSet: any = results[0];
+				const insertId = resultSet.insertId;
+				this.logger.info('INSERT query completed', { table: preparedQuery.table, insertId });
+				return { insertId };
+			}
+			else
+			{
+				const resultSet: any = results[0];
+				const affectedRows = resultSet.affectedRows;
+				this.logger.info(`${preparedQuery.type} query completed`, { table: preparedQuery.table, affectedRows });
+				return { affectedRows };
+			}
+		}
+		catch (err)
+		{
+			const errorMsg = `[MySQLProvider.executePrepared] ${err instanceof Error ? err.message : String(err)}`;
+			this.logger.error(errorMsg, { type: preparedQuery.type, table: preparedQuery.table });
+			return { error: errorMsg };
+		}
+	}
+
+	/**
+	 * Builds SELECT SQL from PreparedQuery.
+	 */
+	private buildSelectFromPrepared(prepared: PreparedQuery): string
+	{
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		const fields = prepared.safeFields?.join(', ') || '*';
+
+		let sql = `SELECT ${fields} FROM ${table}`;
+
+		// Add JOINs
+		if (prepared.joins && prepared.joins.length > 0)
+		{
+			for (const join of prepared.joins)
+			{
+				const joinTable = this.escaper.escapeIdentifier(join.table);
+				sql += ` ${join.type} JOIN ${joinTable}`;
+				if (join.alias)
+				{
+					sql += ` AS ${this.escaper.escapeIdentifier(join.alias)}`;
+				}
+				sql += ` ON ${join.on.sql}`;
+			}
+		}
+
+		// Add WHERE
+		if (prepared.where)
+		{
+			sql += ` WHERE ${prepared.where.sql}`;
+		}
+
+		// Add GROUP BY
+		if (prepared.groupBy && prepared.groupBy.length > 0)
+		{
+			sql += ` GROUP BY ${prepared.groupBy.join(', ')}`;
+		}
+
+		// Add ORDER BY
+		if (prepared.orderBy && prepared.orderBy.length > 0)
+		{
+			const orderClauses = prepared.orderBy.map(o => `${o.field} ${o.direction}`);
+			sql += ` ORDER BY ${orderClauses.join(', ')}`;
+		}
+
+		// Add LIMIT
+		if (prepared.limit !== undefined)
+		{
+			sql += ` LIMIT ${prepared.limit}`;
+		}
+
+		// Add OFFSET
+		if (prepared.offset !== undefined)
+		{
+			sql += ` OFFSET ${prepared.offset}`;
+		}
+
+		return sql;
+	}
+
+	/**
+	 * Builds INSERT SQL from PreparedQuery.
+	 */
+	private buildInsertFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		if (!prepared.values || Object.keys(prepared.values).length === 0)
+		{
+			throw new Error('INSERT query requires values');
+		}
+
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		const fields = Object.keys(prepared.values).map(f => this.escaper.escapeIdentifier(f));
+		const placeholders = Object.keys(prepared.values).map(() => '?');
+		const params = Object.values(prepared.values);
+
+		const sql = `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${placeholders.join(', ')})`;
+
+		return { sql, params };
+	}
+
+	/**
+	 * Builds UPDATE SQL from PreparedQuery.
+	 */
+	private buildUpdateFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		if (!prepared.values || Object.keys(prepared.values).length === 0)
+		{
+			throw new Error('UPDATE query requires values');
+		}
+
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		const setClauses = Object.keys(prepared.values).map(f => `${this.escaper.escapeIdentifier(f)} = ?`);
+		const params = [...Object.values(prepared.values)];
+
+		let sql = `UPDATE ${table} SET ${setClauses.join(', ')}`;
+
+		// Add WHERE
+		if (prepared.where)
+		{
+			sql += ` WHERE ${prepared.where.sql}`;
+			params.push(...prepared.where.params);
+		}
+
+		return { sql, params };
+	}
+
+	/**
+	 * Builds DELETE SQL from PreparedQuery.
+	 */
+	private buildDeleteFromPrepared(prepared: PreparedQuery): { sql: string; params: any[] }
+	{
+		const table = this.escaper.escapeIdentifier(prepared.table);
+		let sql = `DELETE FROM ${table}`;
+		const params: any[] = [];
+
+		// Add WHERE
+		if (prepared.where)
+		{
+			sql += ` WHERE ${prepared.where.sql}`;
+			params.push(...prepared.where.params);
+		}
+
+		return { sql, params };
+	}
+
+	/**
+	 * Returns the MySQL-specific SQL escaper.
+	 * Used by QueryCompiler to escape identifiers correctly.
+	 * @returns MySQLEscaper instance
+	 */
+	getEscaper(): MySQLEscaper
+	{
+		return this.escaper;
+	}
+
+	/**
 	 * Validates query structure for security.
 	 * @param query The query object to validate.
 	 */
 	private validateQuery(query: Query): void
 	{
-		this.logger.debug('Validating query structure', { type: query.type, table: query.table });
-
-		// Validate table name
-		this.validateIdentifier(query.table);
-
-		// Validate fields
-		if (query.fields)
-		{
-			this.logger.debug('Validating query fields', { fieldCount: query.fields.length });
-			for (const field of query.fields)
-			{
-				// Check if it's an Aggregate (has 'type' property that's a valid aggregate function)
-				if (typeof field === 'object' && field !== null && 'type' in field)
-				{
-					const validAggregates = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
-					const fieldType = (field as any).type;
-					if (validAggregates.includes(fieldType))
-					{
-						// It's an Aggregate
-						const aggregate = field as Aggregate;
-						if (!validAggregates.includes(aggregate.type))
-						{
-							this.logger.error('Invalid aggregate type detected', { aggregateType: aggregate.type, validAggregates });
-							throw new Error(`Invalid aggregate type: ${aggregate.type}`);
-						}
-						this.validateIdentifier(fieldRefToString(aggregate.field));
-						if (aggregate.alias)
-						{
-							this.validateAlias(aggregate.alias);
-						}
-					}
-					else
-					{
-						// It's a FieldReference object
-						this.validateIdentifier(fieldRefToString(field as FieldReference));
-					}
-				}
-				else
-				{
-					// It's a string FieldReference
-					this.validateIdentifier(fieldRefToString(field as FieldReference));
-				}
-			}
-		}
-
-		// Validate ORDER BY
-		if (query.orderBy)
-		{
-			for (const order of query.orderBy)
-			{
-				this.validateIdentifier(fieldRefToString(order.field));
-				this.validateDirection(order.direction);
-			}
-		}
-
-		// Validate GROUP BY
-		if (query.groupBy)
-		{
-			for (const field of query.groupBy)
-			{
-				this.validateIdentifier(fieldRefToString(field));
-			}
-		}
-
-		// Validate JOINs
-		if (query.joins)
-		{
-			for (const join of query.joins)
-			{
-				if ('table' in join.source)
-				{
-					this.validateJoinType(join.type);
-					this.validateIdentifier(join.source.table!);
-					this.validateCondition(join.on);
-				}
-				else
-				{
-					this.logger.error('JOIN source must specify a table name', { joinSource: join.source });
-					throw new Error('JOIN source must specify a table name');
-				}
-			}
-		}
-
-		// Validate WHERE condition
-		if (query.where)
-		{
-			this.logger.debug('Validating WHERE condition');
-			this.validateCondition(query.where);
-		}
-
-		// Validate values (for INSERT/UPDATE)
-		if (query.values)
-		{
-			this.logger.debug('Validating query values', { columnCount: Object.keys(query.values).length });
-			for (const key of Object.keys(query.values))
-			{
-				this.validateIdentifier(key);
-			}
-		}
-
-		this.logger.debug('Query structure validation completed successfully', { type: query.type, table: query.table });
+		// Use centralized SQLValidator for all validation logic
+		SQLValidator.validateQuery(query);
 	}
 
 	/**
@@ -860,41 +893,7 @@ export class MySQLProvider implements DataProvider
 	 */
 	private validateCondition(condition: any): void
 	{
-		this.logger.debug('Validating condition structure', { conditionType: Object.keys(condition) });
-
-		if ('field' in condition)
-		{
-			this.validateIdentifier(condition.field);
-		}
-		if ('and' in condition)
-		{
-			this.logger.debug('Validating AND condition', { subconditionCount: condition.and.length });
-			for (const cond of condition.and)
-			{
-				this.validateCondition(cond);
-			}
-		}
-		if ('or' in condition)
-		{
-			this.logger.debug('Validating OR condition', { subconditionCount: condition.or.length });
-			for (const cond of condition.or)
-			{
-				this.validateCondition(cond);
-			}
-		}
-		if ('not' in condition)
-		{
-			this.logger.debug('Validating NOT condition');
-			this.validateCondition(condition.not);
-		}
-		if ('like' in condition)
-		{
-			this.logger.debug('Validating LIKE condition', { field: condition.like.field });
-			this.validateIdentifier(condition.like.field);
-		}
-		if ('subquery' in condition)
-		{
-			this.validateQuery(condition.subquery);
-		}
+		// Use centralized SQLValidator for condition validation
+		SQLValidator.validateCondition(condition);
 	}
 }
