@@ -5,6 +5,8 @@
  */
 import { Query, Condition, Aggregate, Join, FieldReference, tableField, repoField, fieldRefToString } from './queryObject';
 import { QueryBuilder, WhereBuilder, JoinConditionBuilder } from './queryBuilder';
+import { PreparedQuery, PreparedCondition, PreparedJoin, PreparedOrderBy } from './preparedQuery';
+import { QueryCompiler } from './queryCompiler';
 import { DataProvider, ConnectionPoolStatus } from './dataProvider';
 import { RemoteProvider, RemoteProviderOptions } from './dataProviders/remoteProvider';
 import { Middleware } from './middleware';
@@ -23,6 +25,8 @@ export
 	Query, Condition, Aggregate, Join,
 	FieldReference, tableField, repoField, fieldRefToString,
 	QueryBuilder, WhereBuilder, JoinConditionBuilder,
+	PreparedQuery, PreparedCondition, PreparedJoin, PreparedOrderBy,
+	QueryCompiler,
 	DataProvider, ConnectionPoolStatus,
 	RemoteProvider, RemoteProviderOptions,
 	Middleware,
