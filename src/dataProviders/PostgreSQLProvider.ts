@@ -467,6 +467,15 @@ export class PostgreSQLProvider implements DataProvider
 				usedParamIndex: paramIndex + 1
 			};
 		}
+		// Handle IS NULL / IS NOT NULL conditions: { field, op: 'IS NULL' | 'IS NOT NULL' }
+		else if ('field' in cond && 'op' in cond && (cond.op === 'IS NULL' || cond.op === 'IS NOT NULL'))
+		{
+			const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
+			return {
+				conditionSql: `${this.escaper.escapeIdentifier(safeFieldName)} ${cond.op}`,
+				usedParamIndex: paramIndex
+			};
+		}
 		// Handle IN/NOT IN conditions with an array of values: { field, op, values }
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
 		{
