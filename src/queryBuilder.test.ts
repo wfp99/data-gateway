@@ -258,6 +258,32 @@ describe('QueryBuilder', () =>
 			});
 		});
 
+		it('should build WHERE with IS NULL condition', () =>
+		{
+			const query = new QueryBuilder('users')
+				.select('id')
+				.where(w => w.isNull('deleted_at'))
+				.build();
+
+			expect(query.where).toEqual({
+				field: 'deleted_at',
+				op: 'IS NULL'
+			});
+		});
+
+		it('should build WHERE with IS NOT NULL condition', () =>
+		{
+			const query = new QueryBuilder('users')
+				.select('id')
+				.where(w => w.isNotNull('email'))
+				.build();
+
+			expect(query.where).toEqual({
+				field: 'email',
+				op: 'IS NOT NULL'
+			});
+		});
+
 		it('should build WHERE with OR condition', () =>
 		{
 			const query = new QueryBuilder('users')
