@@ -222,6 +222,15 @@ export class QueryCompiler
 				};
 			}
 
+			// Handle IS NULL / IS NOT NULL
+			if (op === 'IS NULL' || op === 'IS NOT NULL')
+			{
+				return {
+					sql: `${escapedField} ${op}`,
+					params: []
+				};
+			}
+
 			// Regular comparison (=, !=, >, <, >=, <=)
 			if ('value' in condition)
 			{
