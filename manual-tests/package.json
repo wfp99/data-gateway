@@ -1,0 +1,21 @@
+{
+	"name": "data-gateway-manual-tests",
+	"version": "1.0.0",
+	"description": "Manual testing environment for data-gateway MySQL functionality",
+	"private": true,
+	"scripts": {
+		"test": "tsx test-mysql.ts",
+		"docker:up": "docker-compose up -d",
+		"docker:down": "docker-compose down",
+		"docker:reset": "docker-compose down -v && docker-compose up -d",
+		"docker:logs": "docker-compose logs -f mysql",
+		"docker:status": "docker-compose ps"
+	},
+	"dependencies": {
+		"mysql2": "^3.11.5"
+	},
+	"devDependencies": {
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.2"
+	}
+}
