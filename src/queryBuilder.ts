@@ -52,6 +52,30 @@ export class JoinConditionBuilder
 	}
 
 	/**
+	 * Add an IS NULL condition
+	 */
+	isNull(field: FieldReference): this
+	{
+		this.condition = {
+			field,
+			op: 'IS NULL'
+		};
+		return this;
+	}
+
+	/**
+	 * Add an IS NOT NULL condition
+	 */
+	isNotNull(field: FieldReference): this
+	{
+		this.condition = {
+			field,
+			op: 'IS NOT NULL'
+		};
+		return this;
+	}
+
+	/**
 	 * Combine current condition with another using AND
 	 */
 	and(callback: JoinOnBuilder): this
@@ -186,6 +210,24 @@ export class WhereBuilder
 	notIn(field: FieldReference, values: any[]): this
 	{
 		this.conditions.push({ field, op: 'NOT IN', values });
+		return this;
+	}
+
+	/**
+	 * Add an IS NULL condition (field IS NULL)
+	 */
+	isNull(field: FieldReference): this
+	{
+		this.conditions.push({ field, op: 'IS NULL' });
+		return this;
+	}
+
+	/**
+	 * Add an IS NOT NULL condition (field IS NOT NULL)
+	 */
+	isNotNull(field: FieldReference): this
+	{
+		this.conditions.push({ field, op: 'IS NOT NULL' });
 		return this;
 	}
 
