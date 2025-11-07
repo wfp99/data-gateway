@@ -44,9 +44,10 @@ export function fieldRefToString(ref: FieldReference): string
 
 /**
  * Condition type, describes SQL query where conditions.
- * Supports basic operators, AND/OR/NOT, IN, LIKE, etc.
+ * Supports basic operators, AND/OR/NOT, IN, LIKE, IS NULL, IS NOT NULL, etc.
  * Examples:
  * { field: 'age', op: '>', value: 18 }
+ * { field: 'deleted_at', op: 'IS NULL' }
  * { and: [ ... ] }
  * Condition can support subquery,
  * e.g.: { field: 'id', op: 'IN', subquery: {...} }
@@ -55,6 +56,7 @@ export type Condition =
 	| { field: FieldReference; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
 	| { field: FieldReference; op: 'IN' | 'NOT IN'; subquery: Query }
 	| { field: FieldReference; op: 'IN' | 'NOT IN'; values: any[] }
+	| { field: FieldReference; op: 'IS NULL' | 'IS NOT NULL' }
 	| { and: Condition[] }
 	| { or: Condition[] }
 	| { not: Condition }
