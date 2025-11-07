@@ -465,6 +465,14 @@ export class MySQLProvider implements DataProvider
 			this.logger.debug('Field comparison condition converted to SQL', { result });
 			return result;
 		}
+		// Handle IS NULL / IS NOT NULL conditions: { field, op: 'IS NULL' | 'IS NOT NULL' }
+		else if ('field' in cond && 'op' in cond && (cond.op === 'IS NULL' || cond.op === 'IS NOT NULL'))
+		{
+			const fieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
+			const result = `${this.escaper.escapeIdentifier(fieldName)} ${cond.op}`;
+			this.logger.debug('IS NULL/IS NOT NULL condition converted to SQL', { result });
+			return result;
+		}
 		// Handle IN/NOT IN conditions with an array of values: { field, op, values }
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
 		{
