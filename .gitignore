@@ -5,3 +5,9 @@ coverage/
 test.db
 dev-history/
 .DS_Store
+
+# Manual testing environment (excluded from version control)
+manual-tests/node_modules/
+manual-tests/dist/
+manual-tests/package-lock.json
+manual-tests/.env
