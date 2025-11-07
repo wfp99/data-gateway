@@ -473,6 +473,11 @@ export class SQLiteProvider implements DataProvider
 			params.push(this.convertValueToSQLite(cond.value));
 			return `${this.escaper.escapeIdentifier(safeFieldName)} ${cond.op} ?`;
 		}
+		else if ('field' in cond && 'op' in cond && (cond.op === 'IS NULL' || cond.op === 'IS NOT NULL'))
+		{
+			const safeFieldName = SQLValidator.validateIdentifier(fieldRefToString(cond.field));
+			return `${this.escaper.escapeIdentifier(safeFieldName)} ${cond.op}`;
+		}
 		else if ('field' in cond && 'op' in cond && 'values' in cond)
 		{
 			const allowedOps = ['IN', 'NOT IN'];
