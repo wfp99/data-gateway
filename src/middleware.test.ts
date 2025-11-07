@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Middleware, runMiddlewares } from './middleware';
 import { Query } from './queryObject';
 import { DataProvider } from './dataProvider';
+import { MySQLEscaper } from './dataProviders/sqlEscaper';
 
 describe('Middleware - Unit Tests', () =>
 {
@@ -14,6 +15,7 @@ describe('Middleware - Unit Tests', () =>
 			connect: vi.fn().mockResolvedValue(undefined),
 			disconnect: vi.fn().mockResolvedValue(undefined),
 			query: vi.fn().mockResolvedValue({ rows: [], affectedRows: 0, insertId: 0 }),
+			getEscaper: vi.fn().mockReturnValue(new MySQLEscaper()),
 		};
 
 		mockQuery = {
@@ -244,7 +246,7 @@ describe('Middleware - Unit Tests', () =>
 				const modifiedQuery = { ...query };
 				if (query.type === 'SELECT')
 				{
-					const softDeleteCondition = { field: 'deleted_at', op: '=' as const, value: null };
+					const softDeleteCondition = { field: 'deleted_at', op: 'IS NULL' as const };
 					if (query.where)
 					{
 						modifiedQuery.where = {
@@ -264,7 +266,7 @@ describe('Middleware - Unit Tests', () =>
 
 			expect(executeFn).toHaveBeenCalledWith({
 				...mockQuery,
-				where: { field: 'deleted_at', op: '=', value: null }
+				where: { field: 'deleted_at', op: 'IS NULL' }
 			});
 		});
 
