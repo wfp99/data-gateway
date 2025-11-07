@@ -327,10 +327,8 @@ const activeAdults = await userRepo.findMany({
 });
 
 // LIKE queries
-const johnUsers = await userRepo.findMany({
-  field: 'name',
-  op: 'LIKE',
-  value: 'John%'
+const johnUsers = await userRepo.find({
+  where: { like: { field: 'name', pattern: 'John%' } }
 });
 
 // IN queries
@@ -340,11 +338,9 @@ const specificUsers = await userRepo.findMany({
   values: [1, 2, 3, 4, 5],
 });
 
-// BETWEEN queries
-const ageRangeUsers = await userRepo.findMany({
-  field: 'age',
-  op: 'BETWEEN',
-  values: [18, 65]
+// NULL checks
+const deletedUsers = await userRepo.find({
+  where: { field: 'deleted_at', op: 'IS NOT NULL' }
 });
 ```
 
@@ -684,7 +680,7 @@ const users = await userRepo.find({
     and: [
       { field: 'department', op: '=', value: userDepartment },
       { field: 'salary', op: '>', value: minSalary },
-      { field: 'name', op: 'LIKE', value: `${searchTerm}%` }
+      { like: { field: 'name', pattern: `${searchTerm}%` } }
     ]
   }
 });

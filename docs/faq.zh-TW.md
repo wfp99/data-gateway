@@ -133,16 +133,14 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3): Promise<T
 { field: 'age', op: '>', value: 18 }
 
 // 字串比對
-{ field: 'name', op: 'LIKE', value: 'John%' }
+{ like: { field: 'name', pattern: 'John%' } }
 
 // 陣列運算
 { field: 'status', op: 'IN', values: ['active', 'pending'] }
 
-// 範圍運算
-{ field: 'age', op: 'BETWEEN', values: [18, 65] }
-
 // Null 檢查
 { field: 'deleted_at', op: 'IS NULL' }
+{ field: 'email', op: 'IS NOT NULL' }
 ```
 
 ### Q: 如何執行複雜的 AND/OR 條件查詢？
@@ -233,12 +231,12 @@ const config = {
 class CustomUserMapper extends MappingFieldMapper {
   transformToDatabase(data: Partial<User>): Record<string, any> {
     const mapped = super.transformToDatabase(data);
-    
+
     if ('isActive' in data) {
       mapped.status = data.isActive ? 'active' : 'inactive';
       delete mapped.isActive;
     }
-    
+
     return mapped;
   }
 }
@@ -254,7 +252,7 @@ class CustomUserMapper extends MappingFieldMapper {
 const loggingMiddleware: Middleware = async (query, next) => {
   const startTime = Date.now();
   console.log(`${query.type} ${query.table} 開始`);
-  
+
   try {
     const result = await next(query);
     console.log(`完成，耗時 ${Date.now() - startTime}ms`);
@@ -289,20 +287,20 @@ const validationMiddleware: Middleware = async (query, next) => {
 const cacheMiddleware: Middleware = (() => {
   const cache = new Map();
   const TTL = 5 * 60 * 1000;
-  
+
   return async (query, next) => {
     if (query.type !== 'SELECT') return next(query);
-    
+
     const key = JSON.stringify(query);
     const cached = cache.get(key);
-    
+
     if (cached && Date.now() - cached.timestamp < TTL) {
       return cached.data;
     }
-    
+
     const result = await next(query);
     cache.set(key, { data: result, timestamp: Date.now() });
-    
+
     return result;
   };
 })();
@@ -349,14 +347,14 @@ const users = await userRepo.findMany({
 pool: { connectionLimit: 3 }
 
 // 生產環境（高流量）
-pool: { 
+pool: {
   connectionLimit: 20,
   queueLimit: 100,
   preConnect: true
 }
 
 // 批次處理
-pool: { 
+pool: {
   connectionLimit: 5,
   acquireTimeout: 120000
 }
@@ -371,11 +369,11 @@ const performanceMiddleware: Middleware = async (query, next) => {
   const start = Date.now();
   const result = await next(query);
   const duration = Date.now() - start;
-  
+
   if (duration > 1000) {
     console.warn(`慢查詢: ${query.type} ${query.table} (${duration}ms)`);
   }
-  
+
   return result;
 };
 ```
@@ -440,11 +438,11 @@ const users = await userRepo.findMany({
 const authMiddleware = (getUserContext: () => UserContext): Middleware => {
   return async (query, next) => {
     const user = getUserContext();
-    
+
     if (query.table === 'admin_logs' && user.role !== 'admin') {
       throw new Error('存取被拒');
     }
-    
+
     return next(query);
   };
 };
@@ -492,15 +490,15 @@ setInterval(() => {
 ```typescript
 const debugMiddleware: Middleware = async (query, next) => {
   console.log('查詢:', JSON.stringify(query, null, 2));
-  
+
   const start = Date.now();
   const result = await next(query);
   const duration = Date.now() - start;
-  
+
   if (duration > 1000) {
     console.warn(`慢查詢 (${duration}ms):`, query);
   }
-  
+
   return result;
 };
 ```
@@ -539,16 +537,16 @@ remote: {
 const rateLimitMiddleware: Middleware = (() => {
   const requests = new Map();
   const limit = 100; // 每分鐘
-  
+
   return async (query, next) => {
     const now = Date.now();
     const window = Math.floor(now / 60000) * 60000;
-    
+
     const count = requests.get(window) || 0;
     if (count >= limit) {
       throw new Error('超過速率限制');
     }
-    
+
     requests.set(window, count + 1);
     return next(query);
   };

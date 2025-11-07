@@ -106,18 +106,16 @@ await userRepo.delete({
 { field: 'age', op: '>', value: 18 }
 { field: 'age', op: '<=', value: 65 }
 
-// String matching
-{ field: 'name', op: 'LIKE', value: 'John%' }
+// String matching (LIKE)
+{ like: { field: 'name', pattern: 'John%' } }
 
 // Array operations
 { field: 'status', op: 'IN', values: ['active', 'pending'] }
 { field: 'role', op: 'NOT IN', values: ['admin'] }
 
-// Range
-{ field: 'age', op: 'BETWEEN', values: [18, 65] }
-
 // Null checks
 { field: 'deleted_at', op: 'IS NULL' }
+{ field: 'email', op: 'IS NOT NULL' }
 ```
 
 ### Complex Conditions
@@ -212,7 +210,7 @@ import { Middleware } from '@wfp99/data-gateway';
 const loggingMiddleware: Middleware = async (query, next) => {
   const start = Date.now();
   console.log(`[${query.type}] ${query.table}`);
-  
+
   try {
     const result = await next(query);
     console.log(`✓ Completed in ${Date.now() - start}ms`);
@@ -259,14 +257,14 @@ const softDeleteMiddleware: Middleware = async (query, next) => {
     query.type = 'UPDATE';
     query.data = { deleted_at: new Date() };
   }
-  
+
   // Filter out deleted records in SELECT
   if (query.type === 'SELECT') {
     query.where = query.where ? {
       and: [query.where, { field: 'deleted_at', op: 'IS NULL' }]
     } : { field: 'deleted_at', op: 'IS NULL' };
   }
-  
+
   return next(query);
 };
 ```
@@ -277,17 +275,17 @@ const softDeleteMiddleware: Middleware = async (query, next) => {
 const cacheMiddleware: Middleware = (() => {
   const cache = new Map();
   const TTL = 5 * 60 * 1000; // 5 minutes
-  
+
   return async (query, next) => {
     if (query.type !== 'SELECT') return next(query);
-    
+
     const key = JSON.stringify(query);
     const cached = cache.get(key);
-    
+
     if (cached && Date.now() - cached.timestamp < TTL) {
       return cached.data;
     }
-    
+
     const result = await next(query);
     cache.set(key, { data: result, timestamp: Date.now() });
     return result;
@@ -332,34 +330,34 @@ const users = await userRepo.find({
 class UserMapper extends MappingFieldMapper {
   transformToDatabase(data: Partial<User>): Record<string, any> {
     const mapped = super.transformToDatabase(data);
-    
+
     // Transform boolean to database format
     if ('isActive' in data) {
       mapped.status = data.isActive ? 'active' : 'inactive';
       delete mapped.isActive;
     }
-    
+
     // Encrypt sensitive fields
     if (data.ssn) {
       mapped.ssn = encrypt(data.ssn);
     }
-    
+
     return mapped;
   }
-  
+
   transformFromDatabase(data: Record<string, any>): Partial<User> {
     const mapped = super.transformFromDatabase(data);
-    
+
     // Transform database format to boolean
     if ('status' in data) {
       mapped.isActive = data.status === 'active';
     }
-    
+
     // Decrypt sensitive fields
     if (data.ssn) {
       mapped.ssn = decrypt(data.ssn);
     }
-    
+
     return mapped;
   }
 }
@@ -474,10 +472,8 @@ const users = await userRepo.findMany({
 });
 
 // ❌ Avoid: Non-indexed LIKE queries
-const users = await userRepo.findMany({
-  field: 'biography',
-  op: 'LIKE',
-  value: '%keyword%'
+const users = await userRepo.find({
+  where: { like: { field: 'biography', pattern: '%keyword%' } }
 });
 
 // ❌ Avoid: Unbounded queries
@@ -524,18 +520,18 @@ for (const [name, status] of allStatuses) {
 async function processAllUsers(batchSize = 1000) {
   let offset = 0;
   let hasMore = true;
-  
+
   while (hasMore) {
     const batch = await userRepo.find({
       limit: batchSize,
       offset,
       orderBy: [{ field: 'id', direction: 'ASC' }]
     });
-    
+
     if (!batch.rows || batch.rows.length < batchSize) {
       hasMore = false;
     }
-    
+
     await processBatch(batch.rows);
     offset += batchSize;
   }
@@ -544,16 +540,16 @@ async function processAllUsers(batchSize = 1000) {
 // Cursor-based pagination (more efficient)
 async function processCursorPagination(pageSize = 1000) {
   let lastId = 0;
-  
+
   while (true) {
     const batch = await userRepo.find({
       where: { field: 'id', op: '>', value: lastId },
       limit: pageSize,
       orderBy: [{ field: 'id', direction: 'ASC' }]
     });
-    
+
     if (!batch.rows || batch.rows.length === 0) break;
-    
+
     await processBatch(batch.rows);
     lastId = batch.rows[batch.rows.length - 1].id;
   }

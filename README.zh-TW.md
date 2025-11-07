@@ -4,7 +4,7 @@
 
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
 [![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-238%20passing-brightgreen.svg)](./src)
+[![Tests](https://img.shields.io/badge/tests-257%20passing-brightgreen.svg)](./src)
 
 一個輕量級、可擴展、**型別安全**的 Node.js 資料存取閘道。支援多種資料來源（MySQL、PostgreSQL、SQLite、遠端 API）、自訂資料提供者和中介軟體。非常適合建構現代、資料驅動的應用程式。
 
@@ -14,10 +14,10 @@
 - 🔄 **流暢 API**: QueryBuilder 模式,直觀的鏈式呼叫
 - 🔍 **智慧警告**: 自動偵測 JOIN 查詢中的欄位衝突
 - �� **多資料來源**: 支援 MySQL、PostgreSQL、SQLite、遠端 API
-- �� **可擴展**: 輕鬆新增自訂資料提供者
+- 🔌 **可擴展**: 輕鬆新增自訂資料提供者
 - 🎭 **中介軟體**: 支援請求/回應攔截
 - 📦 **輕量級**: 核心程式碼 < 15KB (壓縮後)
-- 🧪 **高測試覆蓋**: 238 個測試全部通過，11 個測試套件
+- 🧪 **高測試覆蓋**: 257 個測試全部通過，12 個測試套件
 
 ## 安裝
 
@@ -60,8 +60,8 @@ const gateway = await DataGateway.build(config);
 const userRepo = gateway.getRepository('user');
 
 // 查詢活躍使用者
-const users = await userRepo?.find({ 
-  where: { field: 'status', op: '=', value: 'active' } 
+const users = await userRepo?.find({
+  where: { field: 'status', op: '=', value: 'active' }
 });
 
 await gateway.disconnectAll();

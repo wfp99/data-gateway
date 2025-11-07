@@ -85,7 +85,6 @@ export type Condition =
 	| { field: FieldReference; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
 	| { field: FieldReference; op: 'IN' | 'NOT IN'; value: any[] }
 	| { field: FieldReference; op: 'IS NULL' | 'IS NOT NULL' }
-	| { field: FieldReference; op: 'BETWEEN'; value: [any, any] }
 	| { like: { field: FieldReference; pattern: string } }
 	| { and: Condition[] }
 	| { or: Condition[] }
@@ -378,7 +377,6 @@ new QueryBuilder(table: string)
 - `.notIn(field: string | FieldReference, values: any[]): WhereBuilder`
 - `.isNull(field: string | FieldReference): WhereBuilder`
 - `.isNotNull(field: string | FieldReference): WhereBuilder`
-- `.between(field: string | FieldReference, start: any, end: any): WhereBuilder`
 - `.like(field: string | FieldReference, pattern: string): WhereBuilder`
 
 ---
@@ -536,7 +534,7 @@ const query = new QueryBuilder('orders')
 		.equals('status', 'pending')
 		.greaterThan('total', 100)
 		.in('userId', [1, 2, 3])
-		.between('createdAt', '2024-01-01', '2024-12-31')
+		.isNotNull('createdAt')
 	)
 	.build();
 

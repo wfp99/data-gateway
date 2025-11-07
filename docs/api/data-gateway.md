@@ -767,7 +767,7 @@ Different databases have varying support for JOIN types:
 
 ### Condition Type
 
-Describes SQL WHERE conditions, supporting basic operators, AND/OR/NOT, IN, LIKE, etc.
+Describes SQL WHERE conditions, supporting basic operators, AND/OR/NOT, IN, LIKE, IS NULL, IS NOT NULL, etc.
 
 ```typescript
 export type Condition =
@@ -779,6 +779,9 @@ export type Condition =
 
   // IN/NOT IN (with value array)
   | { field: string; op: 'IN' | 'NOT IN'; values: any[] }
+
+  // NULL checks
+  | { field: string; op: 'IS NULL' | 'IS NOT NULL' }
 
   // AND condition
   | { and: Condition[] }

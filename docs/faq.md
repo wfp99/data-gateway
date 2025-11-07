@@ -133,16 +133,14 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 3): Promise<T
 { field: 'age', op: '>', value: 18 }
 
 // String matching
-{ field: 'name', op: 'LIKE', value: 'John%' }
+{ like: { field: 'name', pattern: 'John%' } }
 
 // Array operations
 { field: 'status', op: 'IN', values: ['active', 'pending'] }
 
-// Range
-{ field: 'age', op: 'BETWEEN', values: [18, 65] }
-
 // Null checks
 { field: 'deleted_at', op: 'IS NULL' }
+{ field: 'email', op: 'IS NOT NULL' }
 ```
 
 ### Q: Complex AND/OR conditions?

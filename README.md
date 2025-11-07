@@ -4,7 +4,7 @@
 
 [![NPM version](https://img.shields.io/npm/v/@wfp99/data-gateway.svg)](https://www.npmjs.com/package/@wfp99/data-gateway)
 [![License](https://img.shields.io/npm/l/@wfp99/data-gateway.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-238%20passing-brightgreen.svg)](./src)
+[![Tests](https://img.shields.io/badge/tests-257%20passing-brightgreen.svg)](./src)
 
 A lightweight, extensible, **type-safe** data access gateway for Node.js. Supporting multiple data sources (MySQL, PostgreSQL, SQLite, Remote API), custom providers, and middleware. Perfect for building modern, data-driven applications.
 
@@ -17,7 +17,7 @@ A lightweight, extensible, **type-safe** data access gateway for Node.js. Suppor
 - 🔌 **Extensible**: Easy to add custom data providers
 - 🎭 **Middleware**: Request/response interception support
 - 📦 **Lightweight**: Core code < 15KB (minified)
-- 🧪 **Well Tested**: 238 tests passing, 11 test suites
+- 🧪 **Well Tested**: 257 tests passing, 12 test suites
 
 ## Installation
 
@@ -60,8 +60,8 @@ const gateway = await DataGateway.build(config);
 const userRepo = gateway.getRepository('user');
 
 // Query active users
-const users = await userRepo?.find({ 
-  where: { field: 'status', op: '=', value: 'active' } 
+const users = await userRepo?.find({
+  where: { field: 'status', op: '=', value: 'active' }
 });
 
 await gateway.disconnectAll();

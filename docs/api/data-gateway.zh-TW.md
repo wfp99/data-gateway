@@ -534,7 +534,7 @@ export type JoinSource =
 
 ### Condition 類型
 
-描述 SQL WHERE 條件，支援基本運算子、AND/OR/NOT、IN、LIKE 等。
+描述 SQL WHERE 條件，支援基本運算子、AND/OR/NOT、IN、LIKE、IS NULL、IS NOT NULL 等。
 
 ```typescript
 export type Condition =
@@ -546,6 +546,9 @@ export type Condition =
 
   // IN/NOT IN（使用值陣列）
   | { field: string; op: 'IN' | 'NOT IN'; values: any[] }
+
+  // NULL 檢查
+  | { field: string; op: 'IS NULL' | 'IS NOT NULL' }
 
   // AND 條件
   | { and: Condition[] }

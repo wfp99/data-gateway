@@ -88,7 +88,6 @@ export type Condition =
 	| { field: FieldReference; op: '=' | '!=' | '>' | '<' | '>=' | '<='; value: any }
 	| { field: FieldReference; op: 'IN' | 'NOT IN'; value: any[] }
 	| { field: FieldReference; op: 'IS NULL' | 'IS NOT NULL' }
-	| { field: FieldReference; op: 'BETWEEN'; value: [any, any] }
 	| { like: { field: FieldReference; pattern: string } }
 	| { and: Condition[] }
 	| { or: Condition[] }
